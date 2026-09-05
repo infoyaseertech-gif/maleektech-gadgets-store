@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Maleektech — Business System</title>
+<link rel="stylesheet" href="css/styles.css" />
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<div id="loading-screen" class="loading-screen">Loading…</div>
+
+<!-- ==================== LOGIN ==================== -->
+<div id="login-screen" class="hidden">
+  <div class="login-card">
+    <img src="assets/logo.jpg" class="login-mark" alt="Maleektech logo" />
+    <h1>Maleektech</h1>
+    <p class="sub">Mobile gadgets and accessories — business system</p>
+
+    <div id="login-error" class="login-error"></div>
+
+    <form id="login-form">
+      <div class="field" style="margin-bottom:12px;">
+        <label for="login-email">Email</label>
+        <input id="login-email" type="email" required autocomplete="username" placeholder="you@maleektech.com" />
+      </div>
+      <div class="field" style="margin-bottom:16px;">
+        <label for="login-password">Password</label>
+        <input id="login-password" type="password" required autocomplete="current-password" placeholder="••••••••" />
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" id="login-submit">Sign in</button>
+    </form>
+
+    <p class="login-footnote">
+      Accounts are created by an admin only — there is no public sign-up.
+      If you don't have credentials yet, ask the business owner to add you
+      under Settings → Staff accounts.
+    </p>
+    <p class="login-footnote hidden" id="login-footnote-demo" style="background:var(--tint);color:var(--primary-dark);border-radius:6px;padding:10px 12px;">
+      <strong>Demo logins</strong><br />
+      Admin: admin@maleektech.com / admin123<br />
+      Staff: staff@maleektech.com / staff123
+    </p>
+  </div>
+</div>
+
+<!-- ==================== APP SHELL ==================== -->
+<div id="app-shell" class="hidden">
+  <div id="sidebar">
+    <div class="brand">
+      <img src="assets/logo.jpg" class="brand-mark" alt="Maleektech logo" />
+      <div class="brand-text" id="brand-name">Maleektech<small>Gadgets &amp; Accessories</small></div>
+    </div>
+    <nav class="nav" id="nav">
+      <button data-view="dashboard" class="active"><i data-lucide="layout-dashboard" width="16" height="16"></i><span class="nav-label">Dashboard</span></button>
+      <button data-view="inventory"><i data-lucide="package" width="16" height="16"></i><span class="nav-label">Inventory</span></button>
+      <button data-view="sales"><i data-lucide="shopping-cart" width="16" height="16"></i><span class="nav-label">Sales</span></button>
+      <button data-view="expenses"><i data-lucide="receipt" width="16" height="16"></i><span class="nav-label">Expenses</span></button>
+      <button data-view="reports"><i data-lucide="bar-chart-3" width="16" height="16"></i><span class="nav-label">Reports</span></button>
+      <button data-view="settings"><i data-lucide="settings" width="16" height="16"></i><span class="nav-label">Settings</span></button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="name" id="user-name">—</div>
+      <div class="role" id="user-role">—</div>
+      <button id="sign-out-btn"><i data-lucide="log-out" width="14" height="14"></i> Sign out</button>
+    </div>
+  </div>
+
+  <div id="main">
+
+    <!-- ---------- DASHBOARD ---------- -->
+    <section class="view active" id="view-dashboard">
+      <div class="page-head">
+        <div>
+          <h2>Dashboard</h2>
+          <p id="dashboard-date"></p>
+        </div>
+      </div>
+      <div class="stat-row" id="dashboard-stats"></div>
+      <div class="card card-pad" style="margin-bottom:20px;">
+        <div class="section-title">Sales, last 30 days</div>
+        <div style="position:relative;height:220px;">
+          <canvas id="trend-chart" role="img" aria-label="Line chart of daily sales for the last 30 days"></canvas>
+        </div>
+      </div>
+      <div id="low-stock-alert"></div>
+    </section>
+
+    <!-- ---------- INVENTORY ---------- -->
+    <section class="view" id="view-inventory">
+      <div class="page-head">
+        <div>
+          <h2>Inventory</h2>
+          <p id="inventory-count"></p>
+        </div>
+        <button class="btn btn-primary" id="add-product-btn" data-admin-only="1"><i data-lucide="plus" width="14" height="14"></i> Add product</button>
+      </div>
+      <div class="form-row" style="margin-bottom:14px;">
+        <div class="field" style="flex:1 1 220px;position:relative;">
+          <label>Search</label>
+          <input id="inventory-search" placeholder="Search by name or product ID" />
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <select id="inventory-category-filter">
+            <option value="ALL">All categories</option>
+            <option value="A">A — Essential fast-movers</option>
+            <option value="B">B — Profitable gadgets</option>
+            <option value="C">C — Premium line</option>
+            <option value="PHASE2">Phase 2 — Expansion</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table id="inventory-table">
+          <thead><tr id="inventory-head"></tr></thead>
+          <tbody id="inventory-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ---------- SALES ---------- -->
+    <section class="view" id="view-sales">
+      <div class="page-head"><div><h2>Record a sale</h2></div></div>
+      <div class="pos-grid">
+        <div>
+          <div class="pos-search">
+            <i data-lucide="search" width="15" height="15"></i>
+            <input id="pos-search-input" placeholder="Search product by name or ID to add" />
+            <div id="pos-results" class="pos-results hidden"></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Item</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Line total</th><th class="right"></th></tr></thead>
+              <tbody id="cart-body"><tr class="empty-row"><td colspan="5">No items yet — search above to add products.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card card-pad">
+          <div class="field" style="margin-bottom:10px;"><label>Customer name (optional)</label><input id="pos-customer-name" /></div>
+          <div class="field" style="margin-bottom:10px;"><label>Customer phone (optional)</label><input id="pos-customer-phone" /></div>
+          <div class="field" style="margin-bottom:10px;"><label>Delivery address (optional)</label><input id="pos-customer-address" /></div>
+          <div class="field" style="margin-bottom:10px;">
+            <label>Payment method</label>
+            <select id="pos-payment-method"><option value="cash">Cash</option><option value="transfer">Transfer</option><option value="pos_card">POS card</option></select>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;cursor:pointer;">
+            <input type="checkbox" id="pos-paid-now" checked style="width:15px;height:15px;" />
+            Payment received now (uncheck to issue an unpaid invoice for pay-before-delivery)
+          </label>
+          <div class="field" style="margin-bottom:0;"><label>Notes (optional)</label><input id="pos-notes" /></div>
+          <div class="pos-total-box"><span style="font-weight:700;font-size:13px;">Total</span><span class="amount" id="pos-total">₦0</span></div>
+          <div id="pos-error" class="error-text hidden"></div>
+          <button class="btn btn-primary btn-block" id="pos-submit" style="margin-top:12px;">Complete sale</button>
+        </div>
+      </div>
+
+      <div style="margin-top:28px;">
+        <div class="section-title">Sales history</div>
+        <div class="form-row" style="margin-bottom:12px;">
+          <div class="field"><label>From</label><input type="date" id="sales-from" /></div>
+          <div class="field"><label>To</label><input type="date" id="sales-to" /></div>
+          <div class="field">
+            <label>Payment method</label>
+            <select id="sales-method-filter"><option value="ALL">All</option><option value="cash">Cash</option><option value="transfer">Transfer</option><option value="pos_card">POS card</option></select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr id="sales-history-head"></tr></thead>
+            <tbody id="sales-history-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- EXPENSES ---------- -->
+    <section class="view" id="view-expenses">
+      <div class="page-head"><div><h2>Expenses</h2></div></div>
+      <div class="two-col">
+        <div class="card card-pad">
+          <div class="section-title">Record an expense</div>
+          <div class="field" style="margin-bottom:10px;"><label>Amount (₦)</label><input type="number" min="0" id="expense-amount" /></div>
+          <div class="field" style="margin-bottom:10px;"><label>Category</label><select id="expense-category"></select></div>
+          <div class="field" style="margin-bottom:10px;"><label>Date</label><input type="date" id="expense-date" /></div>
+          <div class="field" style="margin-bottom:0;"><label>Description</label><input id="expense-description" placeholder="Short note" /></div>
+          <div id="expense-error" class="error-text hidden"></div>
+          <button class="btn btn-primary btn-block" id="expense-submit" style="margin-top:14px;">Add expense</button>
+
+          <div style="border-top:1px solid var(--border);margin-top:16px;padding-top:14px;">
+            <div style="font-size:12.5px;font-weight:700;color:var(--ink-soft);margin-bottom:8px;">Add a category</div>
+            <div class="form-row">
+              <input id="new-expense-category" placeholder="e.g. Delivery" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid var(--border);" />
+              <button class="btn btn-outline" id="add-expense-category-btn"><i data-lucide="plus" width="14" height="14"></i></button>
+            </div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Category</th><th>Description</th><th class="right">Amount</th></tr></thead>
+            <tbody id="expenses-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- REPORTS ---------- -->
+    <section class="view" id="view-reports">
+      <div class="page-head"><div><h2>Reports</h2></div></div>
+      <div class="form-row" style="margin-bottom:18px;">
+        <div class="field"><label>From</label><input type="date" id="report-from" /></div>
+        <div class="field"><label>To</label><input type="date" id="report-to" /></div>
+        <button class="btn btn-outline" id="report-export-btn" style="align-self:flex-end;">Export P&amp;L as CSV</button>
+      </div>
+
+      <div class="section-title">Profit &amp; loss</div>
+      <div class="card" id="pnl-card" style="margin-bottom:24px;padding:6px 0;"></div>
+
+      <div class="two-col grid-block">
+        <div>
+          <div class="section-title">Best sellers (by units, range)</div>
+          <div class="table-wrap"><table><thead><tr><th>ID</th><th>Product</th><th class="right">Units sold</th></tr></thead><tbody id="best-sellers-body"></tbody></table></div>
+        </div>
+        <div>
+          <div class="section-title">Slowest movers (by units, range)</div>
+          <div class="table-wrap"><table><thead><tr><th>ID</th><th>Product</th><th class="right">Units sold</th></tr></thead><tbody id="worst-sellers-body"></tbody></table></div>
+        </div>
+      </div>
+
+      <div class="section-title">Expense breakdown</div>
+      <div class="card card-pad grid-block" id="expense-chart-wrap">
+        <div style="position:relative;height:200px;">
+          <canvas id="expense-chart" role="img" aria-label="Bar chart of expenses by category"></canvas>
+        </div>
+      </div>
+
+      <div class="section-title">Stock valuation (current, all active products)</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>ID</th><th>Product</th><th class="right">Qty</th><th class="right">Cost/unit</th><th class="right">Value</th></tr></thead>
+          <tbody id="stock-valuation-body"></tbody>
+        </table>
+        <div class="pnl-total"><span style="font-weight:700;">Total sitting on the shelf</span><span class="amt" id="stock-valuation-total" style="color:var(--primary-dark);">₦0</span></div>
+      </div>
+    </section>
+
+    <!-- ---------- SETTINGS ---------- -->
+    <section class="view" id="view-settings">
+      <div class="page-head"><div><h2>Settings</h2></div></div>
+
+      <div class="card card-pad" style="margin-bottom:18px;">
+        <div class="section-title">Business profile</div>
+        <div class="form-row">
+          <div class="field" style="width:320px;"><label>Business name</label><input id="settings-business-name" /></div>
+          <button class="btn btn-outline" id="save-business-name-btn">Save</button>
+          <div class="muted" style="font-size:12.5px;margin-left:8px;">Currency: <strong>₦ (Naira)</strong></div>
+        </div>
+      </div>
+
+      <div class="card card-pad" style="margin-bottom:18px;">
+        <div class="section-title">Year Two expansion</div>
+        <p class="muted" style="font-size:12.5px;margin:0 0 10px;" id="phase2-status"></p>
+        <button class="btn btn-primary" id="phase2-toggle-btn"></button>
+      </div>
+
+      <div class="card card-pad" style="margin-bottom:18px;">
+        <div class="section-title">Expense categories</div>
+        <div id="settings-categories" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+      </div>
+
+      <div class="card card-pad">
+        <div class="section-title">Staff accounts</div>
+        <div class="table-wrap" style="margin-bottom:14px;box-shadow:none;">
+          <table>
+            <thead><tr><th>Name</th><th>Email</th><th>Role</th><th class="right">Status</th><th class="right">Action</th></tr></thead>
+            <tbody id="staff-body"></tbody>
+          </table>
+        </div>
+        <p class="muted" style="font-size:11.5px;">
+          Creating a login here requires Supabase's admin API (a service-role key,
+          which must never live in this browser code). Use the Supabase dashboard's
+          Authentication → Users → Invite, or wire up a small server-side Edge
+          Function, then the new person appears in this list automatically the
+          first time they sign in — with <strong>no access to anything</strong> until
+          you click "Edit access" and tick what they should see.
+        </p>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- Modal host -->
+<div id="modal-root"></div>
+
+<script src="js/config.js"></script>
+<script src="js/logo-data.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="js/demo-backend.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
