@@ -60,6 +60,7 @@
       <button data-view="sales"><i data-lucide="shopping-cart" width="16" height="16"></i><span class="nav-label">Sales</span></button>
       <button data-view="expenses"><i data-lucide="receipt" width="16" height="16"></i><span class="nav-label">Expenses</span></button>
       <button data-view="reports"><i data-lucide="bar-chart-3" width="16" height="16"></i><span class="nav-label">Reports</span></button>
+      <button data-view="notifications"><i data-lucide="bell" width="16" height="16"></i><span class="nav-label">Notifications</span><span id="notif-badge" class="nav-badge hidden">0</span></button>
       <button data-view="settings"><i data-lucide="settings" width="16" height="16"></i><span class="nav-label">Settings</span></button>
     </nav>
     <div class="sidebar-foot">
@@ -127,15 +128,18 @@
       <div class="page-head"><div><h2>Record a sale</h2></div></div>
       <div class="pos-grid">
         <div>
+          <div class="section-title" style="margin-bottom:6px;">Add products to this sale</div>
           <div class="pos-search">
             <i data-lucide="search" width="15" height="15"></i>
-            <input id="pos-search-input" placeholder="Search product by name or ID to add" />
-            <div id="pos-results" class="pos-results hidden"></div>
+            <input id="pos-search-input" placeholder="Filter by name or product ID…" />
           </div>
+          <div id="pos-product-list" class="pos-product-list"></div>
+
+          <div class="section-title" style="margin:16px 0 6px;">Cart</div>
           <div class="table-wrap">
             <table>
               <thead><tr><th>Item</th><th class="right">Qty</th><th class="right">Price</th><th class="right">Line total</th><th class="right"></th></tr></thead>
-              <tbody id="cart-body"><tr class="empty-row"><td colspan="5">No items yet — search above to add products.</td></tr></tbody>
+              <tbody id="cart-body"><tr class="empty-row"><td colspan="5">No items yet — click a product on the left to add it.</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -247,6 +251,17 @@
       </div>
     </section>
 
+    <!-- ---------- NOTIFICATIONS ---------- -->
+    <section class="view" id="view-notifications">
+      <div class="page-head">
+        <div>
+          <h2>Notifications</h2>
+          <p>Products added, stock running low or out, sales, restocking, and payments — as they happen.</p>
+        </div>
+      </div>
+      <div class="card" id="notifications-list"></div>
+    </section>
+
     <!-- ---------- SETTINGS ---------- -->
     <section class="view" id="view-settings">
       <div class="page-head"><div><h2>Settings</h2></div></div>
@@ -295,6 +310,7 @@
 
 <!-- Modal host -->
 <div id="modal-root"></div>
+<div id="toast-root"></div>
 
 <script src="js/config.js"></script>
 <script src="js/logo-data.js"></script>

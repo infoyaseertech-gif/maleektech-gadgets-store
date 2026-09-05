@@ -75,13 +75,23 @@ function seedDemoDb() {
     sale_items: [],
     expenses: [],
     stock_movements: [],
+    notifications: [],
   };
 }
 
 function loadDemoDb() {
   try {
     const raw = localStorage.getItem(DEMO_DB_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const fresh = seedDemoDb();
+      let changed = false;
+      Object.keys(fresh).forEach((key) => {
+        if (!(key in parsed)) { parsed[key] = fresh[key]; changed = true; }
+      });
+      if (changed) saveDemoDb(parsed);
+      return parsed;
+    }
   } catch (e) { /* fall through to reseed */ }
   const fresh = seedDemoDb();
   localStorage.setItem(DEMO_DB_KEY, JSON.stringify(fresh));
@@ -127,6 +137,7 @@ class DemoQuery {
   }
 
   _run() {
+    if (!this.db[this.table]) this.db[this.table] = [];
     if (this._deleteFlag) {
       const matches = this._rows();
       const ids = new Set(matches.map((r) => r.id));

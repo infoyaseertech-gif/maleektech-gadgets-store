@@ -36,6 +36,90 @@ function hasPermission(key) {
   if (isAdmin()) return true;
   return !!(state.profile && state.profile.permissions && state.profile.permissions[key]);
 }
+
+/* ---------------------------------------------------------------------- */
+/* Toasts — immediate on-screen alerts (in addition to the Notifications  */
+/* tab, which keeps a permanent history)                                 */
+/* ---------------------------------------------------------------------- */
+function showToast(message, kind = "info") {
+  const root = $("#toast-root");
+  if (!root) return;
+  const el = document.createElement("div");
+  el.className = "toast" + (kind === "warning" ? " warning" : kind === "danger" ? " danger" : "");
+  el.textContent = message;
+  root.appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; el.style.transition = "opacity .3s"; setTimeout(() => el.remove(), 300); }, 4200);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Notifications — persistent activity feed                              */
+/* ---------------------------------------------------------------------- */
+async function logNotification(scope, message) {
+  try {
+    await sb.from("notifications").insert({ scope, message, created_by: state.profile ? state.profile.id : null });
+  } catch (e) { /* non-critical — never block the action that triggered it */ }
+  if (state.currentView === "notifications") loadNotifications();
+  else refreshNotifBadgeCount();
+}
+
+function notifSeenKey() { return `maleektech_notif_seen_${state.profile ? state.profile.id : "anon"}`; }
+
+function visibleNotificationScopes() {
+  const scopes = ["general"];
+  if (isAdmin() || hasPermission("inventory")) scopes.push("inventory");
+  if (isAdmin() || hasPermission("sales")) scopes.push("sales");
+  if (isAdmin()) scopes.push("expenses", "settings");
+  return scopes;
+}
+
+async function loadNotifications() {
+  const { data, error } = await sb.from("notifications").select("*").order("created_at", { ascending: false }).limit(100);
+  if (error) return;
+  const scopes = visibleNotificationScopes();
+  const visible = (data || []).filter((n) => scopes.includes(n.scope));
+
+  localStorage.setItem(notifSeenKey(), new Date().toISOString());
+  refreshNotifBadgeCount();
+
+  const dotClass = (n) => {
+    if (n.scope === "expenses") return "expenses";
+    if (n.scope === "settings") return "settings";
+    if (n.scope === "inventory" && /out of stock/i.test(n.message)) return "inventory-out";
+    if (n.scope === "inventory" && /low stock/i.test(n.message)) return "inventory-warn";
+    return "";
+  };
+  const timeAgo = (iso) => {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+  };
+
+  $("#notifications-list").innerHTML = visible.length ? visible.map((n) => `
+    <div class="notif-row">
+      <div class="notif-dot ${dotClass(n)}"></div>
+      <div>
+        <div class="notif-text">${escapeHtml(n.message)}</div>
+        <div class="notif-time">${timeAgo(n.created_at)}</div>
+      </div>
+    </div>`).join("") : `<div class="card-pad muted" style="font-size:13.5px;">No notifications yet — they'll show up here as sales, stock changes, and other activity happen.</div>`;
+}
+
+async function refreshNotifBadgeCount() {
+  const badge = $("#notif-badge");
+  if (!badge) return;
+  const lastSeen = localStorage.getItem(notifSeenKey());
+  const { data, error } = await sb.from("notifications").select("*").order("created_at", { ascending: false }).limit(100);
+  if (error) return;
+  const scopes = visibleNotificationScopes();
+  const visible = (data || []).filter((n) => scopes.includes(n.scope));
+  const unread = lastSeen ? visible.filter((n) => n.created_at > lastSeen).length : visible.length;
+  if (unread > 0) { badge.textContent = unread > 99 ? "99+" : String(unread); badge.classList.remove("hidden"); }
+  else { badge.classList.add("hidden"); }
+}
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const naira = (n) => "₦" + Math.round(n || 0).toLocaleString("en-US");
@@ -108,11 +192,12 @@ async function handleSignedIn(user) {
   applyPermissionsToNav();
 
   await Promise.all([loadProducts(), loadExpenseCategories(), loadBusinessName()]);
+  refreshNotifBadgeCount();
 
   const order = ["dashboard", "inventory", "sales", "expenses", "reports", "settings"];
   const allowed = order.filter((v) => isAdmin() || hasPermission(v));
   if (allowed.length === 0) {
-    showNoAccessScreen();
+    setView("notifications");
   } else {
     setView(allowed.includes("dashboard") ? "dashboard" : allowed[0]);
   }
@@ -120,7 +205,7 @@ async function handleSignedIn(user) {
 
 function applyPermissionsToNav() {
   $$("#nav button[data-view]").forEach((btn) => {
-    const visible = isAdmin() || hasPermission(btn.dataset.view);
+    const visible = btn.dataset.view === "notifications" || isAdmin() || hasPermission(btn.dataset.view);
     btn.style.display = visible ? "" : "none";
   });
   // Elements marked admin-only (e.g. "Add product") stay admin-exclusive
@@ -165,12 +250,12 @@ $("#sign-out-btn").addEventListener("click", async () => { await sb.auth.signOut
 $("#nav").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-view]");
   if (!btn) return;
-  if (!isAdmin() && !hasPermission(btn.dataset.view)) return;
+  if (!isAdmin() && btn.dataset.view !== "notifications" && !hasPermission(btn.dataset.view)) return;
   setView(btn.dataset.view);
 });
 
 function setView(view) {
-  if (!isAdmin() && !hasPermission(view)) return;
+  if (!isAdmin() && view !== "notifications" && !hasPermission(view)) return;
   const noAccess = $("#no-access-view");
   if (noAccess) noAccess.remove();
   state.currentView = view;
@@ -178,9 +263,10 @@ function setView(view) {
   $$(".view").forEach((v) => v.classList.toggle("active", v.id === `view-${view}`));
   if (view === "dashboard") renderDashboard();
   if (view === "inventory") renderInventory();
-  if (view === "sales") { renderPosCart(); loadSalesHistory(); }
+  if (view === "sales") { renderProductPicker(""); renderPosCart(); loadSalesHistory(); }
   if (view === "expenses") loadExpenses();
   if (view === "reports") loadReports();
+  if (view === "notifications") loadNotifications();
   if (view === "settings") renderSettings();
 }
 
@@ -367,6 +453,10 @@ function openStockInModal(productId) {
       if (error) { showModalError("si-error", error.message); return; }
       closeModal();
       await loadProducts(); drawInventoryRows(); renderDashboard();
+      const updated = state.products.find((x) => x.id === p.id);
+      const newQty = updated ? updated.quantity_in_stock : p.quantity_in_stock + qty;
+      logNotification("inventory", `Restocked ${qty} × ${p.name} (${p.product_code}) — now ${newQty} in stock`);
+      showToast(`Stock updated: ${p.name} now has ${newQty} in stock.`);
     });
   });
 }
@@ -442,6 +532,10 @@ function openProductEditModal(productId) {
       if (error) { showModalError("pe-error", error.message); return; }
       closeModal();
       await loadProducts(); drawInventoryRows(); renderDashboard();
+      if (!existing) {
+        logNotification("inventory", `New product added: ${name} (${code})`);
+        showToast(`Added "${name}" to the catalog.`);
+      }
     });
   });
 }
@@ -455,26 +549,43 @@ $("#add-product-btn").addEventListener("click", () => openProductEditModal(null)
 /* ---------------------------------------------------------------------- */
 let cart = [];
 
-$("#pos-search-input").addEventListener("input", (e) => {
-  const q = e.target.value.trim().toLowerCase();
-  const box = $("#pos-results");
-  if (!q) { box.classList.add("hidden"); box.innerHTML = ""; return; }
-  const matches = state.products.filter((p) => p.is_active && (p.name.toLowerCase().includes(q) || p.product_code.includes(q))).slice(0, 8);
-  box.innerHTML = matches.map((p) => `
-    <div class="row" onclick="addToCart('${p.id}')">
-      <span><span class="mono" style="color:var(--ink-soft);margin-right:8px;">${escapeHtml(p.product_code)}</span>${escapeHtml(p.name)}</span>
-      <span class="mono">${naira(p.selling_price)} · ${p.quantity_in_stock} left</span>
-    </div>`).join("");
-  box.classList.toggle("hidden", matches.length === 0);
-});
+$("#pos-search-input").addEventListener("input", (e) => renderProductPicker(e.target.value));
+
+function renderProductPicker(filterText) {
+  const box = $("#pos-product-list");
+  if (!box) return;
+  const q = (filterText !== undefined ? filterText : $("#pos-search-input").value).trim().toLowerCase();
+  const list = state.products
+    .filter((p) => p.is_active && (!q || p.name.toLowerCase().includes(q) || p.product_code.includes(q)))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (list.length === 0) { box.innerHTML = `<div class="row disabled">No matching products.</div>`; return; }
+
+  box.innerHTML = list.map((p) => {
+    const out = p.quantity_in_stock <= 0;
+    const low = !out && p.quantity_in_stock <= p.reorder_threshold;
+    const stockLabel = out
+      ? `<span class="stock-note out">Out of stock</span>`
+      : low
+        ? `<span class="stock-note low">${p.quantity_in_stock} left</span>`
+        : `<span class="stock-note muted">${p.quantity_in_stock} available</span>`;
+    return `<div class="row ${out ? "disabled" : ""}" ${out ? "" : `onclick="addToCart('${p.id}')"`}>
+      <span class="name">${productThumb(p)}<span class="mono" style="color:var(--ink-soft);">${escapeHtml(p.product_code)}</span>${escapeHtml(p.name)}</span>
+      <span style="display:flex;align-items:center;gap:10px;">${stockLabel}<span class="mono">${naira(p.selling_price)}</span></span>
+    </div>`;
+  }).join("");
+  refreshIcons();
+}
 
 function addToCart(productId) {
   const p = state.products.find((x) => x.id === productId);
+  if (!p || p.quantity_in_stock <= 0) return;
   const existing = cart.find((i) => i.productId === productId);
-  if (existing) existing.qty += 1;
-  else cart.push({ productId, code: p.product_code, name: p.name, qty: 1, unitPrice: p.selling_price, maxQty: p.quantity_in_stock });
-  $("#pos-search-input").value = "";
-  $("#pos-results").classList.add("hidden");
+  if (existing) {
+    if (existing.qty < p.quantity_in_stock) existing.qty += 1;
+  } else {
+    cart.push({ productId, code: p.product_code, name: p.name, qty: 1, unitPrice: p.selling_price, maxQty: p.quantity_in_stock });
+  }
   renderPosCart();
 }
 function updateCartLine(productId, field, value) {
@@ -487,11 +598,11 @@ function removeCartLine(productId) { cart = cart.filter((i) => i.productId !== p
 function renderPosCart() {
   const body = $("#cart-body");
   if (cart.length === 0) {
-    body.innerHTML = `<tr class="empty-row"><td colspan="5">No items yet — search above to add products.</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="5">No items yet — click a product on the left to add it.</td></tr>`;
   } else {
     body.innerHTML = cart.map((i) => `
       <tr>
-        <td>${escapeHtml(i.name)}</td>
+        <td>${escapeHtml(i.name)}${i.qty >= i.maxQty ? ' <span style="font-size:11px;color:var(--amber);">(last in stock)</span>' : ""}</td>
         <td class="right"><input type="number" min="1" max="${i.maxQty}" value="${i.qty}" class="qty-input" onchange="updateCartLine('${i.productId}','qty',+this.value)" /></td>
         <td class="right"><input type="number" min="0" value="${i.unitPrice}" class="price-input" onchange="updateCartLine('${i.productId}','unitPrice',+this.value)" /></td>
         <td class="right mono">${naira(i.qty * i.unitPrice)}</td>
@@ -512,12 +623,15 @@ $("#pos-submit").addEventListener("click", async () => {
     if (i.qty > i.maxQty) { errEl.textContent = `Only ${i.maxQty} of ${i.name} in stock.`; errEl.classList.remove("hidden"); return; }
   }
   $("#pos-submit").disabled = true;
+  const soldSnapshot = cart.map((i) => ({ productId: i.productId, name: i.name, code: i.code, qty: i.qty }));
+  const isPaidNow = $("#pos-paid-now").checked;
+  const total = cart.reduce((a, i) => a + i.qty * i.unitPrice, 0);
   const { data: saleId, error } = await sb.rpc("create_sale", {
     p_customer_name: $("#pos-customer-name").value || null,
     p_customer_phone: $("#pos-customer-phone").value || null,
     p_customer_address: $("#pos-customer-address").value || null,
     p_payment_method: $("#pos-payment-method").value,
-    p_payment_status: $("#pos-paid-now").checked ? "paid" : "pending",
+    p_payment_status: isPaidNow ? "paid" : "pending",
     p_notes: $("#pos-notes").value || null,
     p_items: cart.map((i) => ({ product_id: i.productId, quantity: i.qty, unit_price: i.unitPrice })),
   });
@@ -528,7 +642,23 @@ $("#pos-submit").addEventListener("click", async () => {
   $("#pos-notes").value = ""; $("#pos-payment-method").value = "cash"; $("#pos-paid-now").checked = true;
   renderPosCart();
   await loadProducts();
+  renderProductPicker("");
   loadSalesHistory();
+
+  showToast(isPaidNow ? `Sale recorded — ${naira(total)}` : `Invoice issued (unpaid) — ${naira(total)}`);
+  logNotification("sales", isPaidNow ? `Sale recorded — ${naira(total)} (${soldSnapshot.length} item${soldSnapshot.length === 1 ? "" : "s"})` : `Invoice issued (unpaid) — ${naira(total)}`);
+
+  soldSnapshot.forEach((item) => {
+    const updated = state.products.find((p) => p.id === item.productId);
+    if (!updated) return;
+    if (updated.quantity_in_stock <= 0) {
+      showToast(`Out of stock: ${item.name} — please restock.`, "danger");
+      logNotification("inventory", `Out of stock: ${item.name} (${item.code}) — please restock`);
+    } else if (updated.quantity_in_stock <= updated.reorder_threshold) {
+      showToast(`Low stock: ${item.name} — ${updated.quantity_in_stock} left.`, "warning");
+      logNotification("inventory", `Low stock: ${item.name} (${item.code}) — ${updated.quantity_in_stock} left`);
+    }
+  });
 });
 
 let cachedSales = [];
@@ -582,6 +712,9 @@ $("#sales-method-filter").addEventListener("change", loadSalesHistory);
 async function markSalePaid(saleId) {
   const { error } = await sb.rpc("mark_sale_paid", { p_sale_id: saleId });
   if (error) { alert(error.message); return; }
+  const sale = cachedSales.find((s) => s.id === saleId);
+  showToast(`Payment received${sale ? ` — ${naira(sale.total_amount)}` : ""}.`);
+  logNotification("sales", `Payment received — invoice ${sale ? sale.invoice_no : saleId}`);
   loadSalesHistory();
 }
 
@@ -592,12 +725,15 @@ function openVoidModal(saleId) {
     <div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-danger" id="void-submit">Void sale</button></div>
   `, () => {
     $("#void-submit").addEventListener("click", async () => {
+      const sale = cachedSales.find((s) => s.id === saleId);
       const { error } = await sb.rpc("void_sale", { p_sale_id: saleId, p_reason: $("#void-reason").value || null });
       if (error) { alert(error.message); return; }
       closeModal();
       await loadProducts();
       loadSalesHistory();
       renderDashboard();
+      showToast("Sale voided — stock restored.", "warning");
+      logNotification("sales", `Sale voided — invoice ${sale ? sale.invoice_no : saleId}`);
     });
   });
 }
@@ -785,8 +921,11 @@ $("#expense-submit").addEventListener("click", async () => {
     expense_date: $("#expense-date").value || todayStr(), created_by: state.profile.id,
   });
   if (error) { errEl.textContent = error.message; errEl.classList.remove("hidden"); return; }
+  const catName = state.expenseCategories.find((c) => c.id === category_id)?.name || "Expense";
   $("#expense-amount").value = ""; $("#expense-description").value = "";
   loadExpenses();
+  showToast(`Expense recorded — ${naira(amount)} (${catName})`);
+  logNotification("expenses", `Expense recorded — ${naira(amount)} (${catName})`);
 });
 
 $("#add-expense-category-btn").addEventListener("click", async () => {

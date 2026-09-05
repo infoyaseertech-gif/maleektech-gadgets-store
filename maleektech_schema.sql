@@ -24,7 +24,6 @@ create extension if not exists "pgcrypto"; -- for gen_random_uuid()
 -- ---------------------------------------------------------------------
 -- 2. Tables
 -- ---------------------------------------------------------------------
-
 -- profiles: one row per auth.users, carries the app-level role
 create table if not exists public.profiles (
   id            uuid primary key references auth.users(id) on delete cascade,
@@ -40,6 +39,59 @@ create table if not exists public.profiles (
   permissions   jsonb not null default '{}'::jsonb,
   created_at    timestamptz not null default now()
 );
+
+-- ---------------------------------------------------------------------
+-- 3. Helper functions: current user's role (used inside RLS policies)
+-- ---------------------------------------------------------------------
+create or replace function public.current_role_is_admin()
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin' and is_active = true
+  );
+$$;
+
+create or replace function public.current_user_active()
+returns boolean
+language sql
+security definer
+stable
+as $$
+  select exists (
+    select 1 from public.profiles where id = auth.uid() and is_active = true
+  );
+$$;
+
+-- Activity feed: product/stock/sales/expense events, shown in the app's
+-- Notifications tab. 'scope' controls who can see each entry — kept in
+-- sync with the same sensitivity rules as the rest of the schema:
+--   'expenses' and 'settings' -> admins only (financial / HR-ish detail)
+--   'inventory' / 'sales' / 'general' -> any active user (app also checks
+--   the viewer has been granted that section before showing it)
+create table if not exists public.notifications (
+  id          uuid primary key default gen_random_uuid(),
+  scope       text not null check (scope in ('inventory', 'sales', 'expenses', 'settings', 'general')),
+  message     text not null,
+  created_by  uuid references public.profiles(id),
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists idx_notifications_created_at on public.notifications(created_at desc);
+
+alter table public.notifications enable row level security;
+
+drop policy if exists "notifications_select" on public.notifications;
+create policy "notifications_select" on public.notifications
+  for select using (
+    scope not in ('expenses', 'settings') or public.current_role_is_admin()
+  );
+drop policy if exists "notifications_insert_active_users" on public.notifications;
+create policy "notifications_insert_active_users" on public.notifications
+  for insert with check (public.current_user_active());
 
 create table if not exists public.business_settings (
   key    text primary key,
@@ -140,32 +192,6 @@ create index if not exists idx_sales_date on public.sales(sale_date);
 create index if not exists idx_expenses_date on public.expenses(expense_date);
 
 -- ---------------------------------------------------------------------
--- 3. Helper function: current user's role (used inside RLS policies)
--- ---------------------------------------------------------------------
-create or replace function public.current_role_is_admin()
-returns boolean
-language sql
-security definer
-stable
-as $$
-  select exists (
-    select 1 from public.profiles
-    where id = auth.uid() and role = 'admin' and is_active = true
-  );
-$$;
-
-create or replace function public.current_user_active()
-returns boolean
-language sql
-security definer
-stable
-as $$
-  select exists (
-    select 1 from public.profiles where id = auth.uid() and is_active = true
-  );
-$$;
-
--- ---------------------------------------------------------------------
 -- 4. Row Level Security
 -- ---------------------------------------------------------------------
 alter table public.profiles enable row level security;
@@ -177,47 +203,61 @@ alter table public.expenses enable row level security;
 alter table public.expense_categories enable row level security;
 alter table public.business_settings enable row level security;
 
+drop policy if exists "business_settings_select_active_users" on public.business_settings;
 create policy "business_settings_select_active_users" on public.business_settings
   for select using (public.current_user_active());
+drop policy if exists "business_settings_admin_write" on public.business_settings;
 create policy "business_settings_admin_write" on public.business_settings
   for all using (public.current_role_is_admin()) with check (public.current_role_is_admin());
 
 -- profiles: everyone can see their own row; only admins can see/manage all
+drop policy if exists "profiles_self_select" on public.profiles;
 create policy "profiles_self_select" on public.profiles
   for select using (id = auth.uid() or public.current_role_is_admin());
+drop policy if exists "profiles_admin_write" on public.profiles;
 create policy "profiles_admin_write" on public.profiles
   for all using (public.current_role_is_admin()) with check (public.current_role_is_admin());
 
 -- products: any active logged-in user can read (purchase_price is still
 -- hidden from staff via the column-privilege revoke in section 5, and via
 -- the products_staff view). Only admins can insert/update.
+drop policy if exists "products_select_active_users" on public.products;
 create policy "products_select_active_users" on public.products
   for select using (public.current_user_active());
+drop policy if exists "products_admin_write" on public.products;
 create policy "products_admin_write" on public.products
   for all using (public.current_role_is_admin()) with check (public.current_role_is_admin());
 
 -- stock_movements: cost data — admin only, full stop
+drop policy if exists "stock_movements_admin_only" on public.stock_movements;
 create policy "stock_movements_admin_only" on public.stock_movements
   for all using (public.current_role_is_admin()) with check (public.current_role_is_admin());
 
 -- sales: staff can create and read sales (needed for POS + history),
 -- but cannot void/delete; only admin can void.
+drop policy if exists "sales_select_active_users" on public.sales;
 create policy "sales_select_active_users" on public.sales
   for select using (public.current_user_active());
+drop policy if exists "sales_insert_active_users" on public.sales;
 create policy "sales_insert_active_users" on public.sales
   for insert with check (public.current_user_active() and created_by = auth.uid());
+drop policy if exists "sales_admin_update" on public.sales;
 create policy "sales_admin_update" on public.sales
   for update using (public.current_role_is_admin()) with check (public.current_role_is_admin());
 -- no delete policy for anyone -> hard deletes are impossible via the API
 
+drop policy if exists "sale_items_select_active_users" on public.sale_items;
 create policy "sale_items_select_active_users" on public.sale_items
   for select using (public.current_user_active());
+drop policy if exists "sale_items_insert_active_users" on public.sale_items;
 create policy "sale_items_insert_active_users" on public.sale_items
   for insert with check (public.current_user_active());
 
 -- expenses & expense_categories: admin only — staff must never see these
+drop policy if exists "expenses_admin_only" on public.expenses;
 create policy "expenses_admin_only" on public.expenses
   for all using (public.current_role_is_admin()) with check (public.current_role_is_admin());
+drop policy if exists "expense_categories_admin_only" on public.expense_categories;
 create policy "expense_categories_admin_only" on public.expense_categories
   for all using (public.current_role_is_admin()) with check (public.current_role_is_admin());
 
@@ -503,33 +543,43 @@ insert into public.products (product_code, name, category, purchase_price, selli
 on conflict (product_code) do nothing;
 
 -- ---------------------------------------------------------------------
+-- 8. Product photo storage (Supabase Storage)
+-- ---------------------------------------------------------------------
+-- Creates a public bucket for product images and locks down who can
+-- upload/replace/delete: only admins, while anyone signed in can view.
+insert into storage.buckets (id, name, public)
+values ('product-images', 'product-images', true)
+on conflict (id) do nothing;
+
+drop policy if exists "product_images_public_read" on storage.objects;
+create policy "product_images_public_read" on storage.objects
+  for select using (bucket_id = 'product-images');
+
+drop policy if exists "product_images_admin_write" on storage.objects;
+create policy "product_images_admin_write" on storage.objects
+  for insert with check (bucket_id = 'product-images' and public.current_role_is_admin());
+
+drop policy if exists "product_images_admin_update" on storage.objects;
+create policy "product_images_admin_update" on storage.objects
+  for update using (bucket_id = 'product-images' and public.current_role_is_admin());
+
+drop policy if exists "product_images_admin_delete" on storage.objects;
+create policy "product_images_admin_delete" on storage.objects
+  for delete using (bucket_id = 'product-images' and public.current_role_is_admin());
+
+-- ---------------------------------------------------------------------
 -- Notes for the developer wiring this up
 -- ---------------------------------------------------------------------
 -- 1. Create the first admin manually after signup:
 --      update public.profiles set role = 'admin' where email = 'owner@maleektech.com';
---    (a trigger on auth.users -> insert into profiles with role 'staff' by
---    default is recommended so every signed-up user gets a profile row;
---    add one via Supabase's standard "handle_new_user" trigger pattern.)
+--    (the trg_handle_new_user trigger above already gives every new
+--    signup a 'staff' profile automatically — this manual step is only
+--    needed once, for yourself.)
 -- 2. Never let the frontend write unit_price_at_sale / unit_cost_at_sale by
---    trusting client input for cost — cost should be read server-side from
---    products.purchase_price at insert time via a small Postgres function
---    or Edge Function, so historical COGS can't be spoofed from the browser.
+--    trusting client input for cost — cost is read server-side from
+--    products.purchase_price inside create_sale() above, so historical
+--    COGS can't be spoofed from the browser.
 -- 3. Receipts for expenses: store files in a private Supabase Storage
 --    bucket (not public) and save the path in receipt_url; generate signed
---    URLs on read.
--- 4. Product photos: create a PUBLIC Supabase Storage bucket named
---    "product-images" (Storage -> New bucket -> toggle "Public"). Then add
---    policies so only admins can upload/replace/delete, while anyone can
---    view (needed so staff-facing screens can show the photo too):
---
---      create policy "product_images_public_read" on storage.objects
---        for select using (bucket_id = 'product-images');
---      create policy "product_images_admin_write" on storage.objects
---        for insert with check (bucket_id = 'product-images' and public.current_role_is_admin());
---      create policy "product_images_admin_update" on storage.objects
---        for update using (bucket_id = 'product-images' and public.current_role_is_admin());
---      create policy "product_images_admin_delete" on storage.objects
---        for delete using (bucket_id = 'product-images' and public.current_role_is_admin());
---
---    The frontend uploads the file to that bucket and saves the resulting
---    public URL into products.image_url.
+--    URLs on read. (Not created by this script — add it the same way as
+--    the product-images bucket above if/when you need it.)

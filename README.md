@@ -18,6 +18,21 @@ to your live Supabase database instead — nothing else changes.
 
 ## What's new in this version
 
+- **Sales page now shows every available product up front** — no more
+  hidden search box. Click any item to add it to the cart; each row shows
+  live stock ("12 available", "3 left" in amber, or "Out of stock" greyed
+  out and unclickable). Type in the filter box to narrow the list.
+- **Low-stock / out-of-stock alerts fire immediately.** The moment a sale
+  takes the last unit of something, you get an on-screen alert right then
+  — not just a note buried in a report later.
+- **Notifications tab** (in the sidebar, after Reports) keeps a running
+  history of everything: new products added, restocking, low-stock and
+  out-of-stock warnings, sales recorded, invoices issued, payments
+  received, sales voided, and expenses recorded. A red badge on the nav
+  item shows how many are new since you last checked. Expense notifications
+  are admin-only, matching the rest of the system's financial privacy
+  rules; stock and sales notifications show to anyone with access to that
+  section.
 - **Your real logo** is now used throughout (sidebar, login screen, and
   printed invoices/receipts).
 - **Invoices & receipts.** Every sale gets an auto-generated invoice number
