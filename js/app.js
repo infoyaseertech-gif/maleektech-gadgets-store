@@ -148,14 +148,6 @@ function isAdmin() { return state.profile && state.profile.role === "admin"; }
 /* Boot / auth                                                            */
 /* ---------------------------------------------------------------------- */
 async function boot() {
-  if (DEMO_MODE) {
-    const banner = document.createElement("div");
-    banner.style.cssText = "background:#FBF0DD;color:#B8760A;border-bottom:1px solid #EFD9AE;padding:8px 16px;font-size:12.5px;text-align:center;";
-    banner.innerHTML = `Demo mode — sample data only, nothing here is a real backend. <a href="#" onclick="resetDemoData();return false;" style="color:#B8760A;text-decoration:underline;">Reset demo data</a>`;
-    document.body.prepend(banner);
-    $("#login-footnote-demo").classList.remove("hidden");
-  }
-
   const { data: { session } } = await sb.auth.getSession();
   if (session) {
     await handleSignedIn(session.user);
@@ -921,10 +913,10 @@ function buildInvoiceDocument(sale) {
 <style>
   * { box-sizing: border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; color: #16221A; margin: 0; padding: 24px; background: #f2f2f2; }
-  .sheet { max-width: 780px; margin: 0 auto; background: #fff; position: relative; padding: 32px 36px 0; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
+  .sheet { max-width: 780px; margin: 0 auto; background: #fff; position: relative; padding: 24px 36px 24px; }
+  .top-tagline { text-align: center; color: #B8460A; font-weight: 700; font-size: 12.5px; letter-spacing: .3px; margin-bottom: 14px; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; gap: 16px; }
   .head img { height: 70px; }
-  .head .tagline { color: #B8460A; font-weight: 700; font-size: 12px; text-align: center; margin-bottom: 4px; }
   .head .right { text-align: right; }
   .head .doc-title { font-size: 30px; font-weight: 800; color: #075C2A; margin: 0 0 6px; }
   .head .right p { margin: 2px 0; font-size: 12px; font-weight: 600; color: #075C2A; }
@@ -936,8 +928,8 @@ function buildInvoiceDocument(sale) {
   .inv-box { flex: 1; }
   .inv-box .row { display: flex; }
   .inv-box .cell-a { background: #075C2A; color: #fff; font-weight: 700; font-size: 12px; padding: 10px 12px; flex: 1; display: flex; align-items: center; }
-  .inv-box .cell-b { background: #E7F4EA; font-size: 13px; padding: 10px 12px; flex: 1.3; display: flex; align-items: center; font-family: monospace; }
-  .terms-box { margin-bottom: 14px; }
+  .inv-box .cell-b { background: #E7F4EA; font-size: 13px; padding: 10px 12px; flex: 1.3; display: flex; align-items: center; font-family: monospace; word-break: break-word; }
+  .terms-box { margin-bottom: 20px; }
   .terms-box.paid-box .terms-head { background: #0E7C3A; }
   .terms-head { background: #1F6F43; color: #fff; font-weight: 700; font-size: 12px; padding: 8px 12px; }
   .terms-body { background: #E7F4EA; padding: 10px 12px; }
@@ -945,12 +937,10 @@ function buildInvoiceDocument(sale) {
   table.items { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
   table.items th { background: #075C2A; color: #fff; font-size: 11.5px; text-align: left; padding: 9px 10px; }
   table.items td { border: 1px solid #ddd; padding: 9px 10px; font-size: 12.5px; height: 20px; }
-  .totals { width: 260px; margin-left: auto; margin-bottom: 20px; }
+  .totals { width: 260px; margin-left: auto; margin-bottom: 4px; }
   .totals .row { display: flex; }
   .totals .label { background: #075C2A; color: #fff; font-weight: 700; font-size: 12.5px; padding: 8px 12px; flex: 1; }
   .totals .val { background: #E7F4EA; text-align: right; font-family: monospace; font-size: 13px; padding: 8px 12px; flex: 1; }
-  .note { background: #075C2A; color: #fff; font-size: 12px; padding: 12px 16px; font-style: italic; margin-bottom: 24px; }
-  .foot { text-align: center; background: #075C2A; color: #fff; font-size: 11.5px; padding: 10px; margin: 0 -36px; }
   .paid-stamp {
     position: absolute; top: 180px; right: 60px; border: 6px solid #0E7C3A; color: #0E7C3A;
     font-size: 46px; font-weight: 900; padding: 4px 18px; transform: rotate(-18deg); opacity: .75;
@@ -959,15 +949,29 @@ function buildInvoiceDocument(sale) {
   .actions { max-width: 780px; margin: 16px auto; display: flex; gap: 10px; justify-content: center; }
   .actions button { font-size: 13.5px; font-weight: 600; padding: 9px 16px; border-radius: 6px; cursor: pointer; border: 1px solid #DCE6DF; background: #fff; }
   .actions button.primary { background: #0E7C3A; color: #fff; border-color: #0E7C3A; }
-  @media print { .actions { display: none; } body { background: #fff; padding: 0; } .sheet { padding: 24px 30px 0; } }
+  @media print { .actions { display: none; } body { background: #fff; padding: 0; } .sheet { padding: 16px 24px; } }
+  @media (max-width: 560px) {
+    body { padding: 10px; }
+    .sheet { padding: 16px 16px 20px; }
+    .head { flex-direction: column; align-items: center; text-align: center; }
+    .head .right { text-align: center; }
+    .head img { height: 54px; }
+    .head .doc-title { font-size: 22px; }
+    .two { flex-direction: column; }
+    .bill-to, .inv-box { width: 100%; }
+    table.items { font-size: 11px; }
+    table.items th, table.items td { padding: 6px; }
+    .totals { width: 100%; }
+    .paid-stamp { position: static; display: inline-block; margin: 12px auto 0; transform: rotate(0deg); font-size: 30px; }
+  }
 </style>
 </head>
 <body>
   <div class="sheet" id="invoice-sheet">
+    <div class="top-tagline">${escapeHtml(BUSINESS_INFO.tagline)}</div>
     <div class="head">
       <img src="${LOGO_DATA_URI}" alt="Maleektech logo" />
       <div class="right">
-        <div class="tagline">${escapeHtml(BUSINESS_INFO.tagline)}</div>
         <div class="doc-title">${docLabel}</div>
         <p>${escapeHtml(BUSINESS_INFO.address)}</p>
         <p>${escapeHtml(BUSINESS_INFO.phones)}</p>
@@ -981,8 +985,8 @@ function buildInvoiceDocument(sale) {
     <div class="two">
       <div class="bill-to">
         <div class="t">BILL TO</div>
-        <p>Name / Company: ${escapeHtml(sale.customer_name) || "—"}</p>
-        <p>Delivery Address: ${escapeHtml(sale.customer_address) || "—"}</p>
+        <p>Name: ${escapeHtml(sale.customer_name) || "—"}</p>
+        <p>Address: ${escapeHtml(sale.customer_address) || "—"}</p>
         <p>Phone No: ${escapeHtml(sale.customer_phone) || "—"}</p>
       </div>
       <div class="inv-box">
@@ -1003,11 +1007,7 @@ function buildInvoiceDocument(sale) {
       <div class="row"><div class="label">Net Total</div><div class="val">${naira(subtotal)}</div></div>
     </div>
 
-    <div class="note"><strong>NOTE:</strong> Kindly note that delivery shall be made within 7 working days upon receipt of payment.</div>
-
     ${isPaid ? '<div class="paid-stamp">PAID</div>' : ""}
-
-    <div class="foot">${escapeHtml(BUSINESS_INFO.email)} &nbsp;|&nbsp; RC ${escapeHtml(BUSINESS_INFO.rc)}</div>
   </div>
 
   <div class="actions">
