@@ -18,6 +18,13 @@ to your live Supabase database instead — nothing else changes.
 
 ## What's new in this version
 
+- **My Account.** Click your name at the bottom of the sidebar (any user,
+  admin or staff) to change your own full name, email, or password. The
+  demo logins above (`admin@maleektech.com` / `admin123` and
+  `staff@maleektech.com` / `staff123`) are just the starting defaults —
+  change them any time from there. A user can never grant themselves
+  admin rights or extra permissions this way — that's still admin-only,
+  enforced at the database level, not just hidden in the UI.
 - **Sales page now shows every available product up front** — no more
   hidden search box. Click any item to add it to the cart; each row shows
   live stock ("12 available", "3 left" in amber, or "Out of stock" greyed

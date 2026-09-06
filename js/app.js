@@ -186,7 +186,7 @@ async function handleSignedIn(user) {
   state.profile = profile;
   $("#login-screen").classList.add("hidden");
   $("#app-shell").classList.remove("hidden");
-  $("#user-name").textContent = profile.full_name || profile.email;
+  $("#user-name-text").textContent = profile.full_name || profile.email;
   $("#user-role").textContent = profile.role;
 
   applyPermissionsToNav();
@@ -243,6 +243,54 @@ $("#login-form").addEventListener("submit", async (e) => {
 });
 
 $("#sign-out-btn").addEventListener("click", async () => { await sb.auth.signOut(); });
+
+/* ---------------------------------------------------------------------- */
+/* My Account — self-service name/email/password, available to everyone   */
+/* ---------------------------------------------------------------------- */
+function openMyAccountModal() {
+  const p = state.profile;
+  openModal("My account", `
+    <div class="field" style="margin-bottom:10px;"><label>Full name</label><input id="acct-name" value="${escapeHtml(p.full_name || "")}" /></div>
+    <div class="field" style="margin-bottom:10px;"><label>Email</label><input id="acct-email" type="email" value="${escapeHtml(p.email || "")}" /></div>
+    <div class="field" style="margin-bottom:10px;"><label>New password (leave blank to keep current)</label><input id="acct-password" type="password" placeholder="••••••••" /></div>
+    <div class="field"><label>Confirm new password</label><input id="acct-password-confirm" type="password" placeholder="••••••••" /></div>
+    <div id="acct-error" class="error-text hidden"></div>
+    <p class="muted" style="font-size:11.5px;margin-top:10px;">${DEMO_MODE ? "Demo mode: changes are saved locally in this browser." : "Changing your email may require confirming it via a link Supabase sends, depending on your project's auth settings."}</p>
+    <div class="modal-actions"><button class="btn btn-outline" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="acct-submit">Save changes</button></div>
+  `, () => {
+    $("#acct-submit").addEventListener("click", async () => {
+      const errEl = $("#acct-error");
+      errEl.classList.add("hidden");
+      const newName = $("#acct-name").value.trim();
+      const newEmail = $("#acct-email").value.trim();
+      const pw1 = $("#acct-password").value, pw2 = $("#acct-password-confirm").value;
+      if (!newName || !newEmail) { errEl.textContent = "Name and email can't be empty."; errEl.classList.remove("hidden"); return; }
+      if (pw1 || pw2) {
+        if (pw1.length < 6) { errEl.textContent = "New password must be at least 6 characters."; errEl.classList.remove("hidden"); return; }
+        if (pw1 !== pw2) { errEl.textContent = "Passwords don't match."; errEl.classList.remove("hidden"); return; }
+      }
+
+      $("#acct-submit").disabled = true;
+      const authUpdates = {};
+      if (newEmail !== p.email) authUpdates.email = newEmail;
+      if (pw1) authUpdates.password = pw1;
+
+      if (Object.keys(authUpdates).length > 0) {
+        const { error: authErr } = await sb.auth.updateUser(authUpdates);
+        if (authErr) { showModalError("acct-error", authErr.message); $("#acct-submit").disabled = false; return; }
+      }
+      const { error: profErr } = await sb.from("profiles").update({ full_name: newName, email: newEmail }).eq("id", p.id);
+      $("#acct-submit").disabled = false;
+      if (profErr) { showModalError("acct-error", profErr.message); return; }
+
+      state.profile.full_name = newName;
+      state.profile.email = newEmail;
+      $("#user-name-text").textContent = newName;
+      closeModal();
+      showToast("Account updated.");
+    });
+  });
+}
 
 /* ---------------------------------------------------------------------- */
 /* Navigation                                                             */

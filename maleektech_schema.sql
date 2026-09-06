@@ -218,6 +218,37 @@ drop policy if exists "profiles_admin_write" on public.profiles;
 create policy "profiles_admin_write" on public.profiles
   for all using (public.current_role_is_admin()) with check (public.current_role_is_admin());
 
+-- Any active user can update their OWN row (for self-service name/email
+-- changes from the app). Row-level security alone isn't enough here — a
+-- clever staff user could otherwise try to set their own role to 'admin'
+-- via this same policy. A trigger (below) closes that gap by rejecting
+-- any change to role/is_active/permissions from a non-admin, even on their
+-- own row, regardless of which policy let the UPDATE through.
+drop policy if exists "profiles_self_update" on public.profiles;
+create policy "profiles_self_update" on public.profiles
+  for update using (id = auth.uid()) with check (id = auth.uid());
+
+create or replace function public.protect_profile_privileged_columns()
+returns trigger
+language plpgsql
+as $$
+begin
+  if not public.current_role_is_admin() then
+    if new.role is distinct from old.role
+       or new.is_active is distinct from old.is_active
+       or new.permissions is distinct from old.permissions then
+      raise exception 'Only an admin can change role, active status, or permissions';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_protect_profile_privileged_columns on public.profiles;
+create trigger trg_protect_profile_privileged_columns
+  before update on public.profiles
+  for each row execute function public.protect_profile_privileged_columns();
+
 -- products: any active logged-in user can read (purchase_price is still
 -- hidden from staff via the column-privilege revoke in section 5, and via
 -- the products_staff view). Only admins can insert/update.

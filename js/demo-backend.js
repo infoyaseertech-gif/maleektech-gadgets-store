@@ -65,6 +65,7 @@ function seedDemoDb() {
   return {
     products: DEMO_SEED_PRODUCTS.map((p) => ({ ...p, margin_percent: p.margin_percent })),
     profiles: DEMO_USERS.map(({ password, ...rest }) => rest),
+    auth_users: DEMO_USERS.map(({ id, email, password }) => ({ id, email, password })),
     expense_categories: ["Rent", "Transport", "Airtime/Data", "Packaging", "Staff Wages", "Utilities", "Marketing", "Miscellaneous"]
       .map((name) => ({ id: demoUid(), name })),
     business_settings: [
@@ -272,11 +273,25 @@ function createDemoClient() {
       },
       onAuthStateChange(cb) { authListeners.push(cb); return { data: { subscription: { unsubscribe() {} } } }; },
       async signInWithPassword({ email, password }) {
-        const match = DEMO_USERS.find((u) => u.email === email && u.password === password);
+        const match = (db.auth_users || []).find((u) => u.email === email && u.password === password);
         if (!match) return { data: null, error: { message: "Invalid login credentials" } };
         const session = { user: { id: match.id, email: match.email } };
         localStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session));
         return { data: { user: session.user }, error: null };
+      },
+      async updateUser({ email, password }) {
+        try {
+          const raw = localStorage.getItem(DEMO_SESSION_KEY);
+          if (!raw) return { data: null, error: { message: "Not signed in" } };
+          const session = JSON.parse(raw);
+          const authUser = (db.auth_users || []).find((u) => u.id === session.user.id);
+          if (!authUser) return { data: null, error: { message: "Account not found" } };
+          if (email) { authUser.email = email; session.user.email = email; }
+          if (password) authUser.password = password;
+          saveDemoDb(db);
+          localStorage.setItem(DEMO_SESSION_KEY, JSON.stringify(session));
+          return { data: { user: session.user }, error: null };
+        } catch (e) { return { data: null, error: { message: "Update failed" } }; }
       },
       async signOut() {
         localStorage.removeItem(DEMO_SESSION_KEY);
