@@ -25,7 +25,18 @@ to your live Supabase database instead — nothing else changes.
   change them any time from there. A user can never grant themselves
   admin rights or extra permissions this way — that's still admin-only,
   enforced at the database level, not just hidden in the UI.
-- **Sales page now shows every available product up front** — no more
+- **Dashboard now shows a full activity report**, not just a 30-day sales
+  line. Under Business activity, switch between Daily / Weekly / Monthly /
+  Annually to compare sales against expenses over time and actually see
+  how the business is trending — not just a snapshot.
+- **Reports export as PDF now too**, alongside CSV — same "Print / Save as
+  PDF" pattern as invoices, and includes best/worst sellers, expense
+  breakdown, and stock valuation, not just the P&L numbers.
+- **Business profile is now fully editable** in Settings — name, tagline,
+  address, phone, email, TIN, RC, and bank details all live in the
+  database and feed straight into every printed invoice. No more asking
+  me to change a hardcoded value when your details change.
+- **Sales page shows every available product up front** — no more
   hidden search box. Click any item to add it to the cart; each row shows
   live stock ("12 available", "3 left" in amber, or "Out of stock" greyed
   out and unclickable). Type in the filter box to narrow the list.

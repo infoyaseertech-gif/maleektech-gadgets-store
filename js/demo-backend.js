@@ -10,7 +10,7 @@ const DEMO_DB_KEY = "maleektech_demo_db_v1";
 const DEMO_SESSION_KEY = "maleektech_demo_session_v1";
 
 const DEMO_USERS = [
-  { id: "demo-admin", email: "admin@maleektech.com", password: "admin123", full_name: "Amaka Obi", role: "admin", is_active: true, permissions: {} },
+  { id: "demo-admin", email: "admin@maleektech.com", password: "admin123", full_name: "Yasir M Jafar", role: "admin", is_active: true, permissions: {} },
   { id: "demo-staff", email: "staff@maleektech.com", password: "staff123", full_name: "Tunde Bello", role: "staff", is_active: true, permissions: { inventory: true, sales: true } },
 ];
 
@@ -71,6 +71,14 @@ function seedDemoDb() {
     business_settings: [
       { key: "business_name", value: "Maleektech Mobile Gadgets & Accessories" },
       { key: "currency_symbol", value: "₦" },
+      { key: "legal_name", value: "MALEEKTECH SERVICES LTD" },
+      { key: "tagline", value: "ICT Training & Consultancy" },
+      { key: "address", value: "7 Dariqa Central Mosque, Sokoto Road, Opp. First Bank, Funtua, Katsina State" },
+      { key: "phones", value: "+234 803 1836 295 | +234 808 4478 856" },
+      { key: "email", value: "aamaleektech@gmail.com" },
+      { key: "tin", value: "31509385-0001" },
+      { key: "rc", value: "1967471" },
+      { key: "bank_line", value: "MALEEKTECH SERVICES LTD (Guaranty Trust Bank) 0799455316" },
     ],
     sales: [],
     sale_items: [],
@@ -90,6 +98,12 @@ function loadDemoDb() {
       Object.keys(fresh).forEach((key) => {
         if (!(key in parsed)) { parsed[key] = fresh[key]; changed = true; }
       });
+      if (Array.isArray(parsed.business_settings)) {
+        const existingKeys = new Set(parsed.business_settings.map((r) => r.key));
+        fresh.business_settings.forEach((row) => {
+          if (!existingKeys.has(row.key)) { parsed.business_settings.push(row); changed = true; }
+        });
+      }
       if (changed) saveDemoDb(parsed);
       return parsed;
     }

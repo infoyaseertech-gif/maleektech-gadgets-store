@@ -8,6 +8,8 @@ const sb = DEMO_MODE ? window.createDemoClient() : window.supabase.createClient(
 
 const CATEGORY_LABEL = { A: "Essential fast-movers", B: "Profitable gadgets", C: "Premium line", PHASE2: "Expansion (Phase 2)" };
 
+// Defaults — overwritten at load time from the business_settings table
+// (Settings → Business profile), so none of this needs a code change again.
 const BUSINESS_INFO = {
   legalName: "MALEEKTECH SERVICES LTD",
   tagline: "ICT Training & Consultancy",
@@ -17,6 +19,10 @@ const BUSINESS_INFO = {
   tin: "31509385-0001",
   rc: "1967471",
   bankLine: "MALEEKTECH SERVICES LTD (Guaranty Trust Bank) 0799455316",
+};
+const BUSINESS_INFO_KEY_MAP = {
+  legal_name: "legalName", tagline: "tagline", address: "address", phones: "phones",
+  email: "email", tin: "tin", rc: "rc", bank_line: "bankLine",
 };
 
 // Sections a non-admin account can be granted access to. Admins always see
@@ -337,17 +343,21 @@ async function loadExpenseCategories() {
 }
 
 async function loadBusinessName() {
-  const { data, error } = await sb.from("business_settings").select("*").eq("key", "business_name").maybeSingle();
-  if (!error && data) {
-    state.businessName = data.value;
-    $("#brand-name").innerHTML = `${escapeHtml(state.businessName.split(" ")[0])}<small>${escapeHtml(state.businessName.split(" ").slice(1).join(" "))}</small>`;
-  }
+  const { data, error } = await sb.from("business_settings").select("*");
+  if (error || !data) return;
+  data.forEach((row) => {
+    if (row.key === "business_name") state.businessName = row.value;
+    if (BUSINESS_INFO_KEY_MAP[row.key]) BUSINESS_INFO[BUSINESS_INFO_KEY_MAP[row.key]] = row.value;
+  });
+  $("#brand-name").innerHTML = `${escapeHtml(state.businessName.split(" ")[0])}<small>${escapeHtml(state.businessName.split(" ").slice(1).join(" "))}</small>`;
 }
 
 /* ---------------------------------------------------------------------- */
 /* Dashboard                                                              */
 /* ---------------------------------------------------------------------- */
-let trendChart = null;
+let activityChart = null;
+let activityPeriod = "daily";
+let activityDataCache = null;
 
 async function renderDashboard() {
   const now = new Date();
@@ -370,6 +380,7 @@ async function renderDashboard() {
     <div class="stat-card"><div class="stat-label">This month's revenue</div><div class="stat-value">${naira(monthRevenue)}</div></div>`;
 
   if (isAdmin() || hasPermission("dashboard_financials")) {
+    const { data: expenses } = await sb.from("expenses").select("*").is("voided_at", null).gte("expense_date", monthStart.slice(0, 10));
     const monthCOGS = monthSales.reduce((a, s) => a + s.sale_items.reduce((b, it) => b + Number(it.unit_cost_at_sale) * it.quantity, 0), 0);
     const monthExpenseTotal = (expenses || []).reduce((a, e) => a + Number(e.amount), 0);
     const monthNetProfit = monthRevenue - monthCOGS - monthExpenseTotal;
@@ -382,25 +393,8 @@ async function renderDashboard() {
   statsHtml += `<div class="stat-card"><div class="stat-label">Low-stock alerts</div><div class="stat-value ${lowStock.length ? "down" : ""}">${lowStock.length}</div></div>`;
   $("#dashboard-stats").innerHTML = statsHtml;
 
-  // trend
-  const days = [];
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(now); d.setDate(now.getDate() - i);
-    const key = d.toISOString().slice(0, 10);
-    const total = liveSales.filter((s) => s.sale_date.slice(0, 10) === key).reduce((a, s) => a + Number(s.total_amount), 0);
-    days.push({ label: key.slice(5), total });
-  }
-  const ctx = $("#trend-chart");
-  if (trendChart) trendChart.destroy();
-  trendChart = new Chart(ctx, {
-    type: "line",
-    data: { labels: days.map((d) => d.label), datasets: [{ label: "Sales", data: days.map((d) => d.total), borderColor: "#0E7C3A", backgroundColor: "rgba(14,124,58,0.08)", fill: true, tension: 0.25, pointRadius: 0, borderWidth: 2 }] },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => naira(c.parsed.y) } } },
-      scales: { x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } }, y: { ticks: { callback: (v) => "₦" + (v >= 1000 ? (v / 1000) + "k" : v) } } },
-    },
-  });
+  activityDataCache = null;
+  await renderActivityChart(activityPeriod);
 
   if (lowStock.length) {
     $("#low-stock-alert").innerHTML = `
@@ -413,6 +407,96 @@ async function renderDashboard() {
   }
   refreshIcons();
 }
+
+async function loadActivityData() {
+  if (activityDataCache) return activityDataCache;
+  const showExpenses = isAdmin() || hasPermission("dashboard_financials");
+  const [salesRes, expensesRes] = await Promise.all([
+    sb.from("sales").select("sale_date, total_amount").is("voided_at", null).order("sale_date", { ascending: true }).limit(5000),
+    showExpenses
+      ? sb.from("expenses").select("expense_date, amount").is("voided_at", null).order("expense_date", { ascending: true }).limit(5000)
+      : Promise.resolve({ data: [] }),
+  ]);
+  activityDataCache = { sales: salesRes.data || [], expenses: expensesRes.data || [] };
+  return activityDataCache;
+}
+
+// Groups rows into labeled buckets (daily/weekly/monthly/annually) and sums
+// valueField within each bucket — shared by both the Sales and Expenses series.
+function bucketActivity(rows, dateField, valueField, period) {
+  const now = new Date();
+  const buckets = [];
+
+  if (period === "daily") {
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now); d.setDate(now.getDate() - i);
+      buckets.push({ key: d.toISOString().slice(0, 10), label: d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) });
+    }
+  } else if (period === "weekly") {
+    for (let i = 11; i >= 0; i--) {
+      const end = new Date(now); end.setDate(now.getDate() - i * 7);
+      const start = new Date(end); start.setDate(end.getDate() - 6);
+      buckets.push({ start, end, label: start.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }) });
+    }
+  } else if (period === "monthly") {
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      buckets.push({ year: d.getFullYear(), month: d.getMonth(), label: d.toLocaleDateString("en-GB", { month: "short", year: "2-digit" }) });
+    }
+  } else {
+    let minYear = now.getFullYear();
+    rows.forEach((r) => { const y = new Date(r[dateField]).getFullYear(); if (y < minYear) minYear = y; });
+    minYear = Math.max(minYear, now.getFullYear() - 5);
+    for (let y = minYear; y <= now.getFullYear(); y++) buckets.push({ year: y, label: String(y) });
+  }
+
+  const sums = buckets.map(() => 0);
+  rows.forEach((r) => {
+    const d = new Date(r[dateField]);
+    const val = Number(r[valueField]) || 0;
+    let idx = -1;
+    if (period === "daily") idx = buckets.findIndex((b) => b.key === d.toISOString().slice(0, 10));
+    else if (period === "weekly") idx = buckets.findIndex((b) => d >= b.start && d < new Date(b.end.getTime() + 86400000));
+    else if (period === "monthly") idx = buckets.findIndex((b) => b.year === d.getFullYear() && b.month === d.getMonth());
+    else idx = buckets.findIndex((b) => b.year === d.getFullYear());
+    if (idx !== -1) sums[idx] += val;
+  });
+  return { labels: buckets.map((b) => b.label), values: sums };
+}
+
+async function renderActivityChart(period) {
+  activityPeriod = period;
+  $$("#activity-period-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.period === period));
+  const { sales, expenses } = await loadActivityData();
+  const showExpenses = isAdmin() || hasPermission("dashboard_financials");
+  $("#activity-expense-note").style.display = showExpenses ? "" : "none";
+
+  const salesBucket = bucketActivity(sales, "sale_date", "total_amount", period);
+  const datasets = [{ label: "Sales", data: salesBucket.values, backgroundColor: "#0E7C3A", borderRadius: 4 }];
+  if (showExpenses) {
+    const expenseBucket = bucketActivity(expenses, "expense_date", "amount", period);
+    datasets.push({ label: "Expenses", data: expenseBucket.values, backgroundColor: "#B8760A", borderRadius: 4 });
+  }
+
+  const ctx = $("#activity-chart");
+  if (activityChart) activityChart.destroy();
+  activityChart = new Chart(ctx, {
+    type: "bar",
+    data: { labels: salesBucket.labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: showExpenses, position: "top", align: "end", labels: { boxWidth: 12, font: { size: 11.5 } } }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${naira(c.parsed.y)}` } } },
+      scales: { x: { grid: { display: false }, ticks: { font: { size: 10.5 } } }, y: { ticks: { callback: (v) => "₦" + (v >= 1000 ? (v / 1000) + "k" : v) } } },
+    },
+  });
+  refreshIcons();
+}
+
+$("#activity-period-tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-period]");
+  if (!btn) return;
+  renderActivityChart(btn.dataset.period);
+});
 
 /* ---------------------------------------------------------------------- */
 /* Inventory                                                              */
@@ -1051,6 +1135,7 @@ async function loadReports() {
   $("#stock-valuation-total").textContent = naira(total);
 
   $("#report-export-btn").onclick = () => exportPnlCsv(from, to, { revenue, cogs, grossProfit, totalExpenses, netProfit });
+  $("#report-export-pdf-btn").onclick = () => exportPnlPdf(from, to, { revenue, cogs, grossProfit, totalExpenses, netProfit, best, worst, catEntries, stockRows: stockRows.filter((p) => p.quantity_in_stock > 0), stockTotal: total });
 }
 $("#report-from").addEventListener("change", loadReports);
 $("#report-to").addEventListener("change", loadReports);
@@ -1069,11 +1154,69 @@ function exportPnlCsv(from, to, m) {
   URL.revokeObjectURL(url);
 }
 
+function exportPnlPdf(from, to, m) {
+  const win = window.open("", "_blank");
+  if (!win) { alert("Please allow pop-ups to export as PDF."); return; }
+  const rowsHtml = (arr) => arr.map((r) => `<tr><td>${escapeHtml(r.product.product_code)}</td><td>${escapeHtml(r.product.name)}</td><td style="text-align:right;">${r.qty}</td></tr>`).join("") || `<tr><td colspan="3">No sales in range.</td></tr>`;
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8" /><title>Maleektech Report ${from} to ${to}</title>
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; color: #16221A; padding: 28px; }
+    h1 { color: #075C2A; font-size: 22px; margin: 0 0 2px; }
+    .sub { color: #4C5A50; font-size: 12.5px; margin-bottom: 20px; }
+    h2 { color: #075C2A; font-size: 14px; border-bottom: 2px solid #E7F4EA; padding-bottom: 6px; margin-top: 28px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12.5px; }
+    th { background: #075C2A; color: #fff; text-align: left; padding: 7px 10px; }
+    td { padding: 7px 10px; border-bottom: 1px solid #E7E7E7; }
+    .row { display: flex; justify-content: space-between; padding: 7px 10px; border-bottom: 1px solid #E7E7E7; font-size: 13px; }
+    .row.total { font-weight: 700; background: #E7F4EA; }
+    .two { display: flex; gap: 24px; }
+    .two > div { flex: 1; }
+    .actions { margin-top: 24px; }
+    .actions button { font-size: 13px; padding: 8px 16px; border-radius: 6px; border: 1px solid #0E7C3A; background: #0E7C3A; color: #fff; cursor: pointer; }
+    @media print { .actions { display: none; } }
+  </style></head>
+  <body>
+    <h1>Maleektech — Business Report</h1>
+    <div class="sub">${escapeHtml(from)} to ${escapeHtml(to)}</div>
+
+    <h2>Profit &amp; loss</h2>
+    <div class="row"><span>Revenue</span><span>${naira(m.revenue)}</span></div>
+    <div class="row"><span>Cost of goods sold</span><span>-${naira(m.cogs)}</span></div>
+    <div class="row"><span>Gross profit</span><span>${naira(m.grossProfit)}</span></div>
+    <div class="row"><span>Total expenses</span><span>-${naira(m.totalExpenses)}</span></div>
+    <div class="row total"><span>Net profit</span><span>${naira(m.netProfit)}</span></div>
+
+    <h2>Best &amp; slowest sellers</h2>
+    <div class="two">
+      <div><table><thead><tr><th>ID</th><th>Product</th><th>Units</th></tr></thead><tbody>${rowsHtml(m.best)}</tbody></table></div>
+      <div><table><thead><tr><th>ID</th><th>Product</th><th>Units</th></tr></thead><tbody>${rowsHtml(m.worst)}</tbody></table></div>
+    </div>
+
+    ${m.catEntries.length ? `<h2>Expense breakdown</h2><table><thead><tr><th>Category</th><th style="text-align:right;">Amount</th></tr></thead><tbody>${m.catEntries.map((c) => `<tr><td>${escapeHtml(c.name)}</td><td style="text-align:right;">${naira(c.amount)}</td></tr>`).join("")}</tbody></table>` : ""}
+
+    <h2>Stock valuation (current)</h2>
+    <table><thead><tr><th>ID</th><th>Product</th><th>Qty</th><th>Cost/unit</th><th>Value</th></tr></thead>
+    <tbody>${m.stockRows.map((p) => `<tr><td>${escapeHtml(p.product_code)}</td><td>${escapeHtml(p.name)}</td><td>${p.quantity_in_stock}</td><td>${naira(p.purchase_price)}</td><td>${naira(p.value)}</td></tr>`).join("")}</tbody></table>
+    <div class="row total"><span>Total sitting on the shelf</span><span>${naira(m.stockTotal)}</span></div>
+
+    <div class="actions"><button onclick="window.print()">Print / Save as PDF</button></div>
+  </body></html>`);
+  win.document.close();
+}
+
 /* ---------------------------------------------------------------------- */
 /* Settings                                                               */
 /* ---------------------------------------------------------------------- */
 async function renderSettings() {
   $("#settings-business-name").value = state.businessName;
+  $("#settings-legal-name").value = BUSINESS_INFO.legalName;
+  $("#settings-tagline").value = BUSINESS_INFO.tagline;
+  $("#settings-address").value = BUSINESS_INFO.address;
+  $("#settings-phones").value = BUSINESS_INFO.phones;
+  $("#settings-email").value = BUSINESS_INFO.email;
+  $("#settings-tin").value = BUSINESS_INFO.tin;
+  $("#settings-rc").value = BUSINESS_INFO.rc;
+  $("#settings-bank-line").value = BUSINESS_INFO.bankLine;
 
   const phase2 = state.products.filter((p) => p.category === "PHASE2");
   const activeCount = phase2.filter((p) => p.is_active).length;
@@ -1159,10 +1302,24 @@ function openPermissionsModal(profileId) {
 }
 
 $("#save-business-name-btn").addEventListener("click", async () => {
-  const name = $("#settings-business-name").value.trim();
-  if (!name) return;
-  const { error } = await sb.from("business_settings").upsert({ key: "business_name", value: name });
-  if (!error) { state.businessName = name; await loadBusinessName(); }
+  const fields = {
+    business_name: $("#settings-business-name").value.trim(),
+    legal_name: $("#settings-legal-name").value.trim(),
+    tagline: $("#settings-tagline").value.trim(),
+    address: $("#settings-address").value.trim(),
+    phones: $("#settings-phones").value.trim(),
+    email: $("#settings-email").value.trim(),
+    tin: $("#settings-tin").value.trim(),
+    rc: $("#settings-rc").value.trim(),
+    bank_line: $("#settings-bank-line").value.trim(),
+  };
+  if (!fields.business_name) return;
+  for (const [key, value] of Object.entries(fields)) {
+    const { error } = await sb.from("business_settings").upsert({ key, value });
+    if (error) { alert(`Couldn't save ${key}: ${error.message}`); return; }
+  }
+  await loadBusinessName();
+  showToast("Business profile updated.");
 });
 
 /* ---------------------------------------------------------------------- */

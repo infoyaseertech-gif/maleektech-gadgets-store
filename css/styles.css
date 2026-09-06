@@ -151,13 +151,13 @@ nav.nav button:hover:not(.active) { background: rgba(255,255,255,.08); }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
 
-.card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); }
+.card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 1px 2px rgba(16,34,22,0.04); }
 .card-pad { padding: 16px; }
 
 .stat-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 .stat-card {
   background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 14px 16px; flex: 1 1 160px; min-width: 160px;
+  padding: 14px 16px; flex: 1 1 160px; min-width: 160px; box-shadow: 0 1px 2px rgba(16,34,22,0.04);
 }
 .stat-label { font-size: 12px; color: var(--ink-soft); font-weight: 600; margin-bottom: 6px; }
 .stat-value { font-family: var(--font-mono); font-size: 22px; font-weight: 700; }
@@ -203,6 +203,13 @@ tbody tr:last-child td { border-bottom: none; }
 }
 
 .section-title { font-size: 13.5px; font-weight: 700; margin: 0 0 10px; }
+
+.period-tabs { display: flex; gap: 4px; background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 3px; }
+.period-tabs button {
+  font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 6px; border: none;
+  background: transparent; color: var(--ink-soft); cursor: pointer;
+}
+.period-tabs button.active { background: var(--white); color: var(--primary-dark); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .muted { color: var(--ink-soft); }
 .error-text { color: var(--red); font-size: 12.5px; margin-top: 8px; }
 
@@ -297,6 +304,7 @@ tbody tr:last-child td { border-bottom: none; }
 /* ---------------------------------------------------------------------- */
 @media (max-width: 860px) {
   .pos-grid, .two-col, .form-grid { grid-template-columns: 1fr; }
+  #activity-period-tabs { flex-wrap: wrap; }
 }
 
 @media (max-width: 720px) {
@@ -310,8 +318,22 @@ tbody tr:last-child td { border-bottom: none; }
   nav.nav { flex-direction: row; gap: 4px; flex: 1; }
   nav.nav button { padding: 8px 10px; white-space: nowrap; }
   nav.nav button span.nav-label { display: none; }
+  nav.nav button .nav-badge { position: absolute; top: 2px; right: 2px; }
+  nav.nav button { position: relative; }
   .sidebar-foot { margin-top: 0; padding-top: 0; border-top: none; display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-  .sidebar-foot .name, .sidebar-foot .role { display: none; }
-  #main { padding: 16px; }
+  .sidebar-foot .role { display: none; }
+  .sidebar-foot .name #user-name-text { display: none; }
+  .sidebar-foot .name { padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,.1); }
+  #main { padding: 14px; }
   .modal { width: 100%; }
+  .page-head h2 { font-size: 17px; }
+  .stat-card { min-width: 130px; padding: 12px; }
+  .stat-value { font-size: 18px; }
+  #activity-period-tabs button { padding: 5px 8px; font-size: 11.5px; }
+  .card-pad { padding: 12px; }
+}
+
+@media (max-width: 420px) {
+  .stat-row { gap: 8px; }
+  .stat-card { flex: 1 1 100%; }
 }

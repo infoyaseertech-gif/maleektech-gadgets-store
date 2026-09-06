@@ -81,12 +81,25 @@
         </div>
       </div>
       <div class="stat-row" id="dashboard-stats"></div>
+
       <div class="card card-pad" style="margin-bottom:20px;">
-        <div class="section-title">Sales, last 30 days</div>
-        <div style="position:relative;height:220px;">
-          <canvas id="trend-chart" role="img" aria-label="Line chart of daily sales for the last 30 days"></canvas>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+          <div>
+            <div class="section-title" style="margin:0;">Business activity</div>
+            <p class="muted" style="font-size:12px;margin:2px 0 0;">Compare sales<span id="activity-expense-note"> and expenses</span> over time.</p>
+          </div>
+          <div class="period-tabs" id="activity-period-tabs">
+            <button data-period="daily" class="active">Daily</button>
+            <button data-period="weekly">Weekly</button>
+            <button data-period="monthly">Monthly</button>
+            <button data-period="annually">Annually</button>
+          </div>
+        </div>
+        <div style="position:relative;height:260px;">
+          <canvas id="activity-chart" role="img" aria-label="Bar chart comparing sales and expenses over time"></canvas>
         </div>
       </div>
+
       <div id="low-stock-alert"></div>
     </section>
 
@@ -217,7 +230,8 @@
       <div class="form-row" style="margin-bottom:18px;">
         <div class="field"><label>From</label><input type="date" id="report-from" /></div>
         <div class="field"><label>To</label><input type="date" id="report-to" /></div>
-        <button class="btn btn-outline" id="report-export-btn" style="align-self:flex-end;">Export P&amp;L as CSV</button>
+        <button class="btn btn-outline" id="report-export-btn" style="align-self:flex-end;">Export as CSV</button>
+        <button class="btn btn-outline" id="report-export-pdf-btn" style="align-self:flex-end;">Export as PDF</button>
       </div>
 
       <div class="section-title">Profit &amp; loss</div>
@@ -268,10 +282,21 @@
 
       <div class="card card-pad" style="margin-bottom:18px;">
         <div class="section-title">Business profile</div>
-        <div class="form-row">
-          <div class="field" style="width:320px;"><label>Business name</label><input id="settings-business-name" /></div>
-          <button class="btn btn-outline" id="save-business-name-btn">Save</button>
-          <div class="muted" style="font-size:12.5px;margin-left:8px;">Currency: <strong>₦ (Naira)</strong></div>
+        <p class="muted" style="font-size:12px;margin:0 0 12px;">These details appear on every printed invoice and receipt.</p>
+        <div class="form-grid">
+          <div class="field"><label>Display name (shown in the app)</label><input id="settings-business-name" /></div>
+          <div class="field"><label>Legal name (shown on invoices)</label><input id="settings-legal-name" /></div>
+          <div class="field" style="grid-column:span 2;"><label>Tagline</label><input id="settings-tagline" /></div>
+          <div class="field" style="grid-column:span 2;"><label>Address</label><input id="settings-address" /></div>
+          <div class="field"><label>Phone number(s)</label><input id="settings-phones" /></div>
+          <div class="field"><label>Email</label><input id="settings-email" /></div>
+          <div class="field"><label>TIN</label><input id="settings-tin" /></div>
+          <div class="field"><label>RC number</label><input id="settings-rc" /></div>
+          <div class="field" style="grid-column:span 2;"><label>Bank details (shown on unpaid invoices)</label><input id="settings-bank-line" /></div>
+        </div>
+        <div class="form-row" style="margin-top:12px;">
+          <button class="btn btn-primary" id="save-business-name-btn">Save business profile</button>
+          <div class="muted" style="font-size:12.5px;">Currency: <strong>₦ (Naira)</strong></div>
         </div>
       </div>
 

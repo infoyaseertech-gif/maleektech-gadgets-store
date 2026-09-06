@@ -100,7 +100,15 @@ create table if not exists public.business_settings (
 
 insert into public.business_settings (key, value) values
   ('business_name', 'Maleektech Mobile Gadgets & Accessories'),
-  ('currency_symbol', '₦')
+  ('currency_symbol', '₦'),
+  ('legal_name', 'MALEEKTECH SERVICES LTD'),
+  ('tagline', 'ICT Training & Consultancy'),
+  ('address', '7 Dariqa Central Mosque, Sokoto Road, Opp. First Bank, Funtua, Katsina State'),
+  ('phones', '+234 803 1836 295 | +234 808 4478 856'),
+  ('email', 'aamaleektech@gmail.com'),
+  ('tin', '31509385-0001'),
+  ('rc', '1967471'),
+  ('bank_line', 'MALEEKTECH SERVICES LTD (Guaranty Trust Bank) 0799455316')
 on conflict (key) do nothing;
 
 create table if not exists public.expense_categories (
