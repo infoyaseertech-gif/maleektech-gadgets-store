@@ -6,7 +6,4 @@
 // NEVER put a service_role key in this file.
 // ============================================================================
 const SUPABASE_URL = "https://pelkootzjmcppuljgbqs.supabase.co";
-
-
-[200~
-~const SUPABASE_ANON_KEY = "sb_publishable_msACJwNGuASStqEk4MW9AA_fNNioP1K";
+const SUPABASE_ANON_KEY = "sb_publishable_msACJwNGuASStqEk4MW9AA_fNNioP1K";
