@@ -1301,6 +1301,51 @@ function openPermissionsModal(profileId) {
   });
 }
 
+$("#new-staff-submit").addEventListener("click", async () => {
+  const errEl = $("#new-staff-error");
+  errEl.classList.add("hidden");
+  const full_name = $("#new-staff-name").value.trim();
+  const email = $("#new-staff-email").value.trim();
+  const password = $("#new-staff-password").value;
+
+  if (!full_name || !email) { errEl.textContent = "Name and email are required."; errEl.classList.remove("hidden"); return; }
+  if (password.length < 6) { errEl.textContent = "Password must be at least 6 characters."; errEl.classList.remove("hidden"); return; }
+
+  $("#new-staff-submit").disabled = true;
+
+  if (DEMO_MODE) {
+    // No Edge Function in demo mode — simulate it locally so the flow is still testable.
+    const { error } = await sb.auth.updateUser({}); // no-op, keeps API shape consistent
+    const fakeId = "demo-" + Math.random().toString(36).slice(2, 10);
+    await sb.from("profiles").insert({ id: fakeId, email, full_name, role: "staff", is_active: true, permissions: {} });
+    $("#new-staff-submit").disabled = false;
+    $("#new-staff-name").value = ""; $("#new-staff-email").value = ""; $("#new-staff-password").value = "";
+    showToast(`Added ${full_name} (demo mode — no real login is created).`);
+    renderSettings();
+    return;
+  }
+
+  const { data: { session } } = await sb.auth.getSession();
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-staff-user`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ email, password, full_name }),
+    });
+    const result = await res.json();
+    $("#new-staff-submit").disabled = false;
+    if (!res.ok) { errEl.textContent = result.error || "Something went wrong."; errEl.classList.remove("hidden"); return; }
+    $("#new-staff-name").value = ""; $("#new-staff-email").value = ""; $("#new-staff-password").value = "";
+    showToast(`${full_name} can now sign in — grant their access below.`);
+    logNotification("settings", `New staff account created: ${full_name} (${email})`);
+    renderSettings();
+  } catch (e) {
+    $("#new-staff-submit").disabled = false;
+    errEl.textContent = "Couldn't reach the server. Has the create-staff-user Edge Function been deployed?";
+    errEl.classList.remove("hidden");
+  }
+});
+
 $("#save-business-name-btn").addEventListener("click", async () => {
   const fields = {
     business_name: $("#settings-business-name").value.trim(),

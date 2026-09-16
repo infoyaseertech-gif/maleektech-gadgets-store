@@ -241,7 +241,7 @@ returns trigger
 language plpgsql
 as $$
 begin
-  if not public.current_role_is_admin() then
+  if auth.uid() is not null and not public.current_role_is_admin() then
     if new.role is distinct from old.role
        or new.is_active is distinct from old.is_active
        or new.permissions is distinct from old.permissions then
