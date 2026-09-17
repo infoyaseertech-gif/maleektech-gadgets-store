@@ -71,10 +71,10 @@ function seedDemoDb() {
     business_settings: [
       { key: "business_name", value: "Maleektech Mobile Gadgets & Accessories" },
       { key: "currency_symbol", value: "₦" },
-      { key: "legal_name", value: "MALEEKTECH SERVICES LTD" },
-      { key: "tagline", value: "ICT Training & Consultancy" },
-      { key: "address", value: "7 Dariqa Central Mosque, Sokoto Road, Opp. First Bank, Funtua, Katsina State" },
-      { key: "phones", value: "+234 803 1836 295 | +234 808 4478 856" },
+      { key: "legal_name", value: "MALEEKTECH ICT SERVICES" },
+      { key: "tagline", value: "" },
+      { key: "address", value: "Millennium City, Kaduna" },
+      { key: "phones", value: "+234 703 105 2232" },
       { key: "email", value: "aamaleektech@gmail.com" },
       { key: "tin", value: "31509385-0001" },
       { key: "rc", value: "1967471" },
@@ -229,7 +229,8 @@ function demoRpc(db, name, params) {
     });
     db.sales.push({
       id: saleId, invoice_no: invoiceNo, sale_date: new Date().toISOString(),
-      customer_name: params.p_customer_name, customer_phone: params.p_customer_phone, customer_address: params.p_customer_address,
+      customer_name: params.p_customer_name, customer_phone: params.p_customer_phone,
+      billing_address: params.p_billing_address, customer_address: params.p_customer_address,
       payment_method: params.p_payment_method, payment_status: paymentStatus, paid_at: paymentStatus === "paid" ? new Date().toISOString() : null,
       notes: params.p_notes, total_amount: total, voided_at: null, voided_by: null, void_reason: null,
     });

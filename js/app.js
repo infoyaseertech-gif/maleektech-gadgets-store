@@ -11,10 +11,10 @@ const CATEGORY_LABEL = { A: "Essential fast-movers", B: "Profitable gadgets", C:
 // Defaults — overwritten at load time from the business_settings table
 // (Settings → Business profile), so none of this needs a code change again.
 const BUSINESS_INFO = {
-  legalName: "MALEEKTECH SERVICES LTD",
-  tagline: "ICT Training & Consultancy",
-  address: "7 Dariqa Central Mosque, Sokoto Road, Opp. First Bank, Funtua, Katsina State",
-  phones: "+234 803 1836 295 | +234 808 4478 856",
+  legalName: "MALEEKTECH ICT SERVICES",
+  tagline: "",
+  address: "Millennium City, Kaduna",
+  phones: "+234 703 105 2232",
   email: "aamaleektech@gmail.com",
   tin: "31509385-0001",
   rc: "1967471",
@@ -319,13 +319,21 @@ function setView(view) {
 /* ---------------------------------------------------------------------- */
 /* Data loading                                                           */
 /* ---------------------------------------------------------------------- */
+function sortByProductCode(list) {
+  return [...list].sort((a, b) => {
+    const na = parseInt(a.product_code, 10), nb = parseInt(b.product_code, 10);
+    if (!isNaN(na) && !isNaN(nb) && na !== nb) return na - nb;
+    return a.product_code.localeCompare(b.product_code);
+  });
+}
+
 async function loadProducts() {
   if (isAdmin()) {
     const { data, error } = await sb.rpc("get_products_full");
-    if (!error) state.products = data || [];
+    if (!error) state.products = sortByProductCode(data || []);
   } else {
     const { data, error } = await sb.from("products_staff_view").select("*");
-    if (!error) state.products = data || [];
+    if (!error) state.products = sortByProductCode(data || []);
   }
 }
 
@@ -680,8 +688,7 @@ function renderProductPicker(filterText) {
   if (!box) return;
   const q = (filterText !== undefined ? filterText : $("#pos-search-input").value).trim().toLowerCase();
   const list = state.products
-    .filter((p) => p.is_active && (!q || p.name.toLowerCase().includes(q) || p.product_code.includes(q)))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .filter((p) => p.is_active && (!q || p.name.toLowerCase().includes(q) || p.product_code.includes(q)));
 
   if (list.length === 0) { box.innerHTML = `<div class="row disabled">No matching products.</div>`; return; }
 
@@ -753,6 +760,7 @@ $("#pos-submit").addEventListener("click", async () => {
   const { data: saleId, error } = await sb.rpc("create_sale", {
     p_customer_name: $("#pos-customer-name").value || null,
     p_customer_phone: $("#pos-customer-phone").value || null,
+    p_billing_address: $("#pos-billing-address").value || null,
     p_customer_address: $("#pos-customer-address").value || null,
     p_payment_method: $("#pos-payment-method").value,
     p_payment_status: isPaidNow ? "paid" : "pending",
@@ -762,7 +770,7 @@ $("#pos-submit").addEventListener("click", async () => {
   $("#pos-submit").disabled = false;
   if (error) { errEl.textContent = error.message; errEl.classList.remove("hidden"); return; }
   cart = [];
-  $("#pos-customer-name").value = ""; $("#pos-customer-phone").value = ""; $("#pos-customer-address").value = "";
+  $("#pos-customer-name").value = ""; $("#pos-customer-phone").value = ""; $("#pos-billing-address").value = ""; $("#pos-customer-address").value = "";
   $("#pos-notes").value = ""; $("#pos-payment-method").value = "cash"; $("#pos-paid-now").checked = true;
   renderPosCart();
   await loadProducts();
@@ -889,6 +897,8 @@ function buildInvoiceDocument(sale) {
     <tr><td>${escapeHtml(i.name)}</td><td style="text-align:center;">${i.qty}</td><td style="text-align:right;">${naira(i.price)}</td><td style="text-align:right;">${naira(i.total)}</td></tr>
   `).join("") + Array.from({ length: blankRows }).map(() => `<tr><td>&nbsp;</td><td></td><td></td><td></td></tr>`).join("");
 
+  const noteLine = `<p style="font-style:italic;margin-top:8px;"><strong>NOTE:</strong> Kindly note that delivery shall be made within 7 working days upon receipt of payment.</p>`;
+
   const paymentBlock = isPaid ? `
     <div class="terms-box paid-box">
       <div class="terms-head">PAYMENT RECEIVED</div>
@@ -896,6 +906,7 @@ function buildInvoiceDocument(sale) {
         <p><strong>Amount paid:</strong> ${naira(sale.total_amount)}</p>
         <p><strong>Payment method:</strong> <span style="text-transform:capitalize;">${sale.payment_method.replace("_", " ")}</span></p>
         <p><strong>Date paid:</strong> ${sale.paid_at ? new Date(sale.paid_at).toLocaleString("en-GB") : dateStr}</p>
+        ${noteLine}
       </div>
     </div>` : `
     <div class="terms-box">
@@ -904,6 +915,7 @@ function buildInvoiceDocument(sale) {
         <p>• PAYMENT IS DONE BEFORE THE DELIVERY</p>
         <p>• Payment methods: Bank Transfer, Cheque, or Cash</p>
         <p style="color:#B8760A;"><strong>• BANK DETAILS: ${escapeHtml(BUSINESS_INFO.bankLine)}</strong></p>
+        ${noteLine}
       </div>
     </div>`;
 
@@ -913,14 +925,12 @@ function buildInvoiceDocument(sale) {
 <style>
   * { box-sizing: border-box; }
   body { font-family: 'Segoe UI', Arial, sans-serif; color: #16221A; margin: 0; padding: 24px; background: #f2f2f2; }
-  .sheet { max-width: 780px; margin: 0 auto; background: #fff; position: relative; padding: 24px 36px 24px; }
-  .top-tagline { text-align: center; color: #B8460A; font-weight: 700; font-size: 12.5px; letter-spacing: .3px; margin-bottom: 14px; }
-  .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; gap: 16px; }
-  .head img { height: 70px; }
+  .sheet { max-width: 780px; margin: 0 auto; background: #fff; position: relative; padding: 28px 36px 0; }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; }
+  .head img { height: 72px; }
   .head .right { text-align: right; }
   .head .doc-title { font-size: 30px; font-weight: 800; color: #075C2A; margin: 0 0 6px; }
   .head .right p { margin: 2px 0; font-size: 12px; font-weight: 600; color: #075C2A; }
-  .bar { background: #1F6F43; color: #fff; text-align: center; font-weight: 700; padding: 8px; font-size: 13px; letter-spacing: .3px; margin-bottom: 14px; }
   .two { display: flex; gap: 0; margin-bottom: 14px; }
   .bill-to { flex: 1.4; background: #2E8B57; color: #fff; padding: 14px 16px; }
   .bill-to .t { font-weight: 700; font-size: 12px; margin-bottom: 8px; }
@@ -937,10 +947,11 @@ function buildInvoiceDocument(sale) {
   table.items { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
   table.items th { background: #075C2A; color: #fff; font-size: 11.5px; text-align: left; padding: 9px 10px; }
   table.items td { border: 1px solid #ddd; padding: 9px 10px; font-size: 12.5px; height: 20px; }
-  .totals { width: 260px; margin-left: auto; margin-bottom: 4px; }
+  .totals { width: 260px; margin-left: auto; margin-bottom: 24px; }
   .totals .row { display: flex; }
   .totals .label { background: #075C2A; color: #fff; font-weight: 700; font-size: 12.5px; padding: 8px 12px; flex: 1; }
   .totals .val { background: #E7F4EA; text-align: right; font-family: monospace; font-size: 13px; padding: 8px 12px; flex: 1; }
+  .foot { text-align: center; background: #1F6F43; color: #fff; font-size: 11.5px; padding: 10px; margin: 0 -36px; }
   .paid-stamp {
     position: absolute; top: 180px; right: 60px; border: 6px solid #0E7C3A; color: #0E7C3A;
     font-size: 46px; font-weight: 900; padding: 4px 18px; transform: rotate(-18deg); opacity: .75;
@@ -949,10 +960,10 @@ function buildInvoiceDocument(sale) {
   .actions { max-width: 780px; margin: 16px auto; display: flex; gap: 10px; justify-content: center; }
   .actions button { font-size: 13.5px; font-weight: 600; padding: 9px 16px; border-radius: 6px; cursor: pointer; border: 1px solid #DCE6DF; background: #fff; }
   .actions button.primary { background: #0E7C3A; color: #fff; border-color: #0E7C3A; }
-  @media print { .actions { display: none; } body { background: #fff; padding: 0; } .sheet { padding: 16px 24px; } }
+  @media print { .actions { display: none; } body { background: #fff; padding: 0; } .sheet { padding: 20px 30px 0; } }
   @media (max-width: 560px) {
     body { padding: 10px; }
-    .sheet { padding: 16px 16px 20px; }
+    .sheet { padding: 18px 16px 0; }
     .head { flex-direction: column; align-items: center; text-align: center; }
     .head .right { text-align: center; }
     .head img { height: 54px; }
@@ -962,13 +973,13 @@ function buildInvoiceDocument(sale) {
     table.items { font-size: 11px; }
     table.items th, table.items td { padding: 6px; }
     .totals { width: 100%; }
+    .foot { margin: 0 -16px; }
     .paid-stamp { position: static; display: inline-block; margin: 12px auto 0; transform: rotate(0deg); font-size: 30px; }
   }
 </style>
 </head>
 <body>
   <div class="sheet" id="invoice-sheet">
-    <div class="top-tagline">${escapeHtml(BUSINESS_INFO.tagline)}</div>
     <div class="head">
       <img src="${LOGO_DATA_URI}" alt="Maleektech logo" />
       <div class="right">
@@ -980,13 +991,12 @@ function buildInvoiceDocument(sale) {
       </div>
     </div>
 
-    <div class="bar">${escapeHtml(BUSINESS_INFO.legalName)} ${docLabel}</div>
-
     <div class="two">
       <div class="bill-to">
         <div class="t">BILL TO</div>
         <p>Name: ${escapeHtml(sale.customer_name) || "—"}</p>
-        <p>Address: ${escapeHtml(sale.customer_address) || "—"}</p>
+        <p>Address: ${escapeHtml(sale.billing_address) || "—"}</p>
+        <p>Delivery Address: ${escapeHtml(sale.customer_address) || "—"}</p>
         <p>Phone No: ${escapeHtml(sale.customer_phone) || "—"}</p>
       </div>
       <div class="inv-box">
@@ -1008,6 +1018,8 @@ function buildInvoiceDocument(sale) {
     </div>
 
     ${isPaid ? '<div class="paid-stamp">PAID</div>' : ""}
+
+    <div class="foot">${escapeHtml(BUSINESS_INFO.email)} &nbsp;|&nbsp; RC ${escapeHtml(BUSINESS_INFO.rc)}</div>
   </div>
 
   <div class="actions">

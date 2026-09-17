@@ -101,10 +101,10 @@ create table if not exists public.business_settings (
 insert into public.business_settings (key, value) values
   ('business_name', 'Maleektech Mobile Gadgets & Accessories'),
   ('currency_symbol', '₦'),
-  ('legal_name', 'MALEEKTECH SERVICES LTD'),
-  ('tagline', 'ICT Training & Consultancy'),
-  ('address', '7 Dariqa Central Mosque, Sokoto Road, Opp. First Bank, Funtua, Katsina State'),
-  ('phones', '+234 803 1836 295 | +234 808 4478 856'),
+  ('legal_name', 'MALEEKTECH ICT SERVICES'),
+  ('tagline', ''),
+  ('address', 'Millennium City, Kaduna'),
+  ('phones', '+234 703 105 2232'),
   ('email', 'aamaleektech@gmail.com'),
   ('tin', '31509385-0001'),
   ('rc', '1967471'),
@@ -158,7 +158,8 @@ create table if not exists public.sales (
   sale_date      timestamptz not null default now(),
   customer_name  text,
   customer_phone text,
-  customer_address text,
+  billing_address text,     -- "Address:" on the invoice
+  customer_address text,    -- "Delivery Address:" on the invoice
   payment_method text not null default 'cash' check (payment_method in ('cash', 'transfer', 'pos_card')),
   payment_status text not null default 'paid' check (payment_status in ('pending', 'paid')),
   paid_at        timestamptz,
@@ -403,6 +404,7 @@ create trigger trg_apply_sale_item
 create or replace function public.create_sale(
   p_customer_name    text,
   p_customer_phone   text,
+  p_billing_address  text,
   p_customer_address text,
   p_payment_method   text,
   p_payment_status   text,   -- 'paid' (POS sale, paid now) or 'pending' (invoice, pay before delivery)
@@ -439,8 +441,8 @@ begin
   select count(*) + 1000 into v_seq from public.sales;
   v_invoice_no := 'MTS/INV/' || extract(year from now())::text || '/' || v_seq::text;
 
-  insert into public.sales (invoice_no, customer_name, customer_phone, customer_address, payment_method, payment_status, paid_at, notes, total_amount, created_by)
-  values (v_invoice_no, p_customer_name, p_customer_phone, p_customer_address, p_payment_method, p_payment_status,
+  insert into public.sales (invoice_no, customer_name, customer_phone, billing_address, customer_address, payment_method, payment_status, paid_at, notes, total_amount, created_by)
+  values (v_invoice_no, p_customer_name, p_customer_phone, p_billing_address, p_customer_address, p_payment_method, p_payment_status,
           case when p_payment_status = 'paid' then now() else null end, p_notes, v_total, auth.uid())
   returning id into v_sale_id;
 
@@ -461,7 +463,8 @@ begin
 end;
 $$;
 
-grant execute on function public.create_sale(text, text, text, text, text, text, jsonb) to authenticated;
+drop function if exists public.create_sale(text, text, text, text, text, text, jsonb);
+grant execute on function public.create_sale(text, text, text, text, text, text, text, jsonb) to authenticated;
 
 -- Mark a pending invoice as paid -> it becomes a receipt in the frontend.
 -- Any active user can collect payment at the counter, not just admins.
