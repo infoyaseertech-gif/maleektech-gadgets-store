@@ -1339,7 +1339,7 @@ $("#new-staff-submit").addEventListener("click", async () => {
 
   const { data: { session } } = await sb.auth.getSession();
   try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-staff-user`, {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/quick-service`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ email, password, full_name }),
