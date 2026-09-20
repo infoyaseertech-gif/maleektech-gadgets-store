@@ -159,6 +159,7 @@ async function boot() {
   sb.auth.onAuthStateChange((event) => {
     if (event === "SIGNED_OUT") {
       state.profile = null;
+      if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
       showLogin();
     }
   });
@@ -191,6 +192,7 @@ async function handleSignedIn(user) {
 
   await Promise.all([loadProducts(), loadExpenseCategories(), loadBusinessName()]);
   refreshNotifBadgeCount();
+  setupRealtimeSync();
 
   const order = ["dashboard", "inventory", "sales", "expenses", "reports", "settings"];
   const allowed = order.filter((v) => isAdmin() || hasPermission(v));
@@ -199,6 +201,45 @@ async function handleSignedIn(user) {
   } else {
     setView(allowed.includes("dashboard") ? "dashboard" : allowed[0]);
   }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Real-time sync — every logged-in device picks up changes automatically */
+/* ---------------------------------------------------------------------- */
+let realtimeChannel = null;
+let realtimeDebounceTimer = null;
+
+function setupRealtimeSync() {
+  if (DEMO_MODE) return; // no live backend to subscribe to in demo mode
+  if (realtimeChannel) return; // already subscribed this session
+
+  realtimeChannel = sb.channel("maleektech-realtime-sync");
+  ["products", "sales", "sale_items", "expenses", "expense_categories", "stock_movements", "business_settings", "notifications", "profiles"]
+    .forEach((table) => {
+      realtimeChannel.on("postgres_changes", { event: "*", schema: "public", table }, () => handleRealtimeChange(table));
+    });
+  realtimeChannel.subscribe();
+}
+
+function handleRealtimeChange(table) {
+  // Debounced so a burst of related changes (e.g. a sale + its line items)
+  // triggers one refresh instead of several back-to-back re-renders.
+  clearTimeout(realtimeDebounceTimer);
+  realtimeDebounceTimer = setTimeout(async () => {
+    if (table === "products" || table === "stock_movements") await loadProducts();
+    if (table === "business_settings") await loadBusinessName();
+    if (table === "expense_categories") await loadExpenseCategories();
+
+    if (state.currentView === "dashboard") renderDashboard();
+    else if (state.currentView === "inventory") drawInventoryRows();
+    else if (state.currentView === "sales") { renderProductPicker(""); loadSalesHistory(); }
+    else if (state.currentView === "expenses") loadExpenses();
+    else if (state.currentView === "reports") loadReports();
+    else if (state.currentView === "notifications") loadNotifications();
+    else if (state.currentView === "settings") renderSettings();
+
+    refreshNotifBadgeCount();
+  }, 400);
 }
 
 function applyPermissionsToNav() {
@@ -953,9 +994,10 @@ function buildInvoiceDocument(sale) {
   .totals .val { background: #E7F4EA; text-align: right; font-family: monospace; font-size: 13px; padding: 8px 12px; flex: 1; }
   .foot { text-align: center; background: #1F6F43; color: #fff; font-size: 11.5px; padding: 10px; margin: 0 -36px; }
   .paid-stamp {
-    position: absolute; top: 180px; right: 60px; border: 6px solid #0E7C3A; color: #0E7C3A;
-    font-size: 46px; font-weight: 900; padding: 4px 18px; transform: rotate(-18deg); opacity: .75;
-    border-radius: 8px; letter-spacing: 2px;
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-18deg);
+    border: 6px solid #0E7C3A; color: #0E7C3A;
+    font-size: 46px; font-weight: 900; padding: 4px 18px; opacity: .35;
+    border-radius: 8px; letter-spacing: 2px; pointer-events: none; z-index: 5;
   }
   .actions { max-width: 780px; margin: 16px auto; display: flex; gap: 10px; justify-content: center; }
   .actions button { font-size: 13.5px; font-weight: 600; padding: 9px 16px; border-radius: 6px; cursor: pointer; border: 1px solid #DCE6DF; background: #fff; }
